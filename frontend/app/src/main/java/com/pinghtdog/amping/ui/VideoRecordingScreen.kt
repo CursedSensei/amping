@@ -2,12 +2,24 @@ package com.pinghtdog.amping.ui
 
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FlipCameraAndroid
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -15,24 +27,25 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.pinghtdog.amping.ui.theme.CyanPrimary
-import com.pinghtdog.amping.ui.theme.DarkNavy
-import com.pinghtdog.amping.ui.theme.LightBackground
 import com.pinghtdog.amping.ui.theme.RedPenalty
-import com.pinghtdog.amping.ui.theme.TextDark
-import com.pinghtdog.amping.ui.theme.GoldYellow
-import com.pinghtdog.amping.ui.theme.Typography
-import com.pinghtdog.amping.ui.theme.TextMuted
 
 @Composable
 fun VideoRecordingScreen(onVideoRecorded: () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .background(Color.Black)) {
         // Camera Preview Placeholder
-        Text("Camera Preview Active", color = Color.Gray, modifier = Modifier.align(Alignment.Center))
+        Text(
+            "Camera Preview Active",
+            color = Color.Gray,
+            modifier = Modifier.align(Alignment.Center)
+        )
 
         // Gabby Prompt Overlay
         Card(
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 48.dp, start = 24.dp, end = 24.dp),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 48.dp, start = 24.dp, end = 24.dp),
             colors = CardDefaults.cardColors(containerColor = Color(0xCC000000))
         ) {
             Text(
@@ -71,7 +84,13 @@ fun VideoRecordingScreen(onVideoRecorded: () -> Unit) {
                 ) {}
             }
 
-            IconButton(onClick = {}) { Icon(Icons.Filled.FlipCameraAndroid, "Flip", tint = Color.White) }
+            IconButton(onClick = {}) {
+                Icon(
+                    Icons.Filled.FlipCameraAndroid,
+                    "Flip",
+                    tint = Color.White
+                )
+            }
         }
     }
 }
