@@ -1,22 +1,54 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ShieldCheck, ChevronRight, Zap } from 'lucide-react';
+import { ArrowLeft, ShieldCheck, ChevronRight, Zap, CheckCircle2, X } from 'lucide-react';
 import { MOCK_PATIENTS, type AnomalousEntry } from '../data/mockData';
+
+// ─── Status config ──────────────────────────────────────────────────────────
 
 const STATUS_CONFIG = {
   'unverified-miss': {
     label: 'UNVERIFIED MISS (U)',
     classes: 'bg-red-100 text-red-700 border-red-200',
+    dot: 'bg-red-400',
   },
   'tech-failure': {
     label: 'TECH FAILURE (T)',
     classes: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+    dot: 'bg-yellow-400',
   },
   'app-miss': {
     label: 'APP MISS (A)',
     classes: 'bg-blue-100 text-blue-700 border-blue-200',
+    dot: 'bg-teal-400',
   },
 };
+
+const RECONCILED_CONFIG = {
+  label: 'PROVIDER-VERIFIED (★)',
+  classes: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  dot: 'bg-emerald-400',
+};
+
+// ─── Toast ──────────────────────────────────────────────────────────────────
+
+function Toast({ onDismiss }: { onDismiss: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 5000);
+    return () => clearTimeout(t);
+  }, [onDismiss]);
+
+  return (
+    <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-3 bg-emerald-600 text-white text-sm font-semibold px-5 py-4 rounded-xl shadow-2xl max-w-lg w-[90%]">
+      <CheckCircle2 size={22} className="shrink-0" />
+      <span>Reconciliation applied. Penalties reversed. Streak restored.</span>
+      <button onClick={onDismiss} className="ml-auto text-white/70 hover:text-white transition-colors">
+        <X size={14} />
+      </button>
+    </div>
+  );
+}
+
+// ─── Reconcile Modal ────────────────────────────────────────────────────────
 
 function ReconcileModal({
   entries,
@@ -32,19 +64,17 @@ function ReconcileModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden border border-blue-100">
         {/* Header */}
-        <div className="p-6 border-b border-gray-100">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-              <ShieldCheck size={16} className="text-blue-600" />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-900">Confirm Reconciliation</h3>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-500">
-                Provider-Verified Stamp
-              </p>
-            </div>
+        <div className="flex items-center gap-3 p-6 bg-blue-50 border-b border-blue-100">
+          <div className="w-10 h-10 rounded-full bg-white border-2 border-blue-200 flex items-center justify-center shrink-0">
+            <ShieldCheck size={18} className="text-blue-600" />
+          </div>
+          <div>
+            <h3 className="font-bold text-gray-900">Confirm Reconciliation</h3>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-500">
+              Provider-Verified Stamp
+            </p>
           </div>
         </div>
 
@@ -74,12 +104,12 @@ function ReconcileModal({
             <select
               value={method}
               onChange={(e) => setMethod(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300"
+              className="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-300 transition-shadow"
             >
               <option>Home Visit</option>
               <option>Clinic Visit</option>
               <option>Phone Verification</option>
-              <option>Physical Record Review</option>
+              <option>Physical Treatment Card</option>
             </select>
           </div>
 
@@ -93,7 +123,7 @@ function ReconcileModal({
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="e.g. home visit confirmed, physical record reviewed"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+              className="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-300 resize-none transition-shadow"
             />
           </div>
         </div>
@@ -102,14 +132,14 @@ function ReconcileModal({
         <div className="p-6 pt-0 flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 border border-gray-200 text-gray-600 text-sm font-medium py-2.5 rounded-xl hover:bg-gray-50 transition-colors"
+            className="flex-1 border border-gray-200 text-gray-600 text-sm font-medium py-3 rounded-xl hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={() => onConfirm(method, reason)}
             disabled={!reason.trim()}
-            className="flex-1 bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="flex-[2] bg-emerald-600 text-white text-sm font-semibold py-3 rounded-xl hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Apply Stamp
           </button>
@@ -119,6 +149,8 @@ function ReconcileModal({
   );
 }
 
+// ─── Page ───────────────────────────────────────────────────────────────────
+
 export default function DoseReconciliation() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -127,31 +159,44 @@ export default function DoseReconciliation() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showModal, setShowModal] = useState(false);
   const [reconciled, setReconciled] = useState<Set<string>>(new Set());
+  const [showToast, setShowToast] = useState(false);
+  // Live streak mirrors the patient's streak, increases when reconciled
+  const [liveStreak, setLiveStreak] = useState(patient?.currentStreak ?? 0);
 
   if (!patient) return <div className="p-8 text-gray-500">Patient not found.</div>;
 
   const toggle = (entryId: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(entryId)) next.delete(entryId);
-      else next.add(entryId);
+      next.has(entryId) ? next.delete(entryId) : next.add(entryId);
       return next;
     });
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = (method: string, _reason: string) => {
+    const count = selected.size;
     setReconciled((prev) => new Set([...prev, ...selected]));
     setSelected(new Set());
     setShowModal(false);
+    setShowToast(true);
+    // Restore streak: each reconciled day +1 (simplified — shows intent)
+    setLiveStreak((prev) => Math.min(prev + count, patient.bestStreak));
+    console.log('Verification method:', method);
   };
 
   const selectedEntries = patient.anomalousEntries.filter((e) => selected.has(e.id));
   const pending = patient.anomalousEntries.filter((e) => !reconciled.has(e.id));
+  const reconciledEntries = patient.anomalousEntries.filter((e) => reconciled.has(e.id));
+
+  const streakChanged = liveStreak > patient.currentStreak;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 relative">
+      {/* Toast */}
+      {showToast && <Toast onDismiss={() => setShowToast(false)} />}
+
       {/* Top bar */}
-      <div className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between">
+      <div className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between sticky top-0 z-10">
         <button
           onClick={() => navigate(`/patient/${id}`)}
           className="flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors"
@@ -180,8 +225,8 @@ export default function DoseReconciliation() {
         <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6">
           <ShieldCheck size={16} className="text-blue-500 mt-0.5 shrink-0" />
           <p className="text-sm text-blue-700 leading-relaxed">
-            Reconciled doses are retroactively counted in the patient's PDC (Proportion of Days Covered)
-            and remove any applied penalty.{' '}
+            Reconciled doses are retroactively counted in the patient's PDC (Proportion of Days Covered) and
+            remove any applied penalty.{' '}
             <strong>Provider action is logged with timestamp.</strong>
           </p>
         </div>
@@ -209,16 +254,30 @@ export default function DoseReconciliation() {
           </div>
 
           <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-6">
+            {/* Live streak */}
             <div>
               <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Current Streak</p>
-              <div className="flex items-center gap-1">
-                <Zap size={13} className="text-yellow-500 fill-yellow-400" />
-                <span className="font-bold text-gray-900">{patient.currentStreak} days</span>
-                {patient.currentStreak < patient.bestStreak && (
+              <div className="flex items-center gap-1.5">
+                <Zap
+                  size={15}
+                  className={`transition-colors ${streakChanged ? 'text-green-500 fill-green-400' : 'text-yellow-500 fill-yellow-400'}`}
+                />
+                <span
+                  className={`font-bold text-xl leading-none transition-colors ${streakChanged ? 'text-green-600' : 'text-gray-900'}`}
+                >
+                  {liveStreak}
+                </span>
+                <span className="text-xs text-gray-400 ml-0.5">days</span>
+                {liveStreak < patient.bestStreak && (
                   <span className="text-[11px] text-gray-400">(broken from {patient.bestStreak})</span>
+                )}
+                {streakChanged && (
+                  <span className="text-[11px] text-green-600 font-semibold ml-1">↑ Restored</span>
                 )}
               </div>
             </div>
+
+            {/* Treatment progress */}
             <div>
               <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Treatment Progress</p>
               <div className="flex items-center gap-2">
@@ -241,12 +300,12 @@ export default function DoseReconciliation() {
           <p className="text-[11px] uppercase tracking-wider text-gray-400 mb-3">
             Classification Legend (Gate 0)
           </p>
-          <div className="flex flex-wrap gap-3 text-xs font-medium">
+          <div className="flex flex-wrap gap-4 text-xs font-medium">
             {[
               { color: 'bg-yellow-400', label: 'Technical Miss (T)' },
-              { color: 'bg-green-500', label: 'App Miss (A)' },
-              { color: 'bg-red-500', label: 'Unverified Miss (U)' },
-              { color: 'bg-emerald-600', label: 'Provider-Verified (★)' },
+              { color: 'bg-teal-400', label: 'App Miss (A)' },
+              { color: 'bg-red-400', label: 'Unverified Miss (U)' },
+              { color: 'bg-emerald-500', label: 'Provider-Verified (★)' },
             ].map((l) => (
               <div key={l.label} className="flex items-center gap-1.5">
                 <span className={`w-2.5 h-2.5 rounded-full ${l.color}`} />
@@ -256,9 +315,10 @@ export default function DoseReconciliation() {
           </div>
         </div>
 
-        {/* Anomalous entries */}
+        {/* Anomalous entries table */}
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden mb-6">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          {/* Table header bar */}
+          <div className="flex items-center justify-between px-5 py-4 bg-gray-50 border-b border-gray-100">
             <div>
               <h2 className="font-semibold text-gray-900">Anomalous Entries Requiring Action</h2>
               <p className="text-xs text-gray-400 mt-0.5">Select entries below to manually override via BYPASS.</p>
@@ -277,23 +337,25 @@ export default function DoseReconciliation() {
             </button>
           </div>
 
-          {pending.length === 0 ? (
+          {/* Column headers */}
+          <div className="grid grid-cols-[32px_1fr_180px_1fr] gap-4 px-5 py-2.5 bg-white border-b border-gray-100">
+            <span />
+            {['Date', 'Status Badge', 'Detected Cause'].map((h) => (
+              <span key={h} className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">
+                {h}
+              </span>
+            ))}
+          </div>
+
+          {/* Pending rows */}
+          {pending.length === 0 && reconciledEntries.length === 0 ? (
             <div className="py-12 text-center text-gray-400">
               <ShieldCheck size={32} className="mx-auto mb-2 text-green-400" />
-              <p className="font-medium text-gray-600">All entries reconciled</p>
-              <p className="text-sm">No pending anomalous entries for this patient.</p>
+              <p className="font-medium text-gray-600">No anomalous entries</p>
+              <p className="text-sm">This patient has no pending entries to reconcile.</p>
             </div>
           ) : (
             <>
-              {/* Table header */}
-              <div className="grid grid-cols-[32px_1fr_160px_1fr] gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-100">
-                <span />
-                <span className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Date</span>
-                <span className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Status Badge</span>
-                <span className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Detected Cause</span>
-              </div>
-
-              {/* Rows */}
               {pending.map((entry) => {
                 const cfg = STATUS_CONFIG[entry.statusBadge];
                 const isSelected = selected.has(entry.id);
@@ -301,10 +363,11 @@ export default function DoseReconciliation() {
                   <div
                     key={entry.id}
                     onClick={() => toggle(entry.id)}
-                    className={`grid grid-cols-[32px_1fr_160px_1fr] gap-4 items-center px-5 py-3.5 border-b border-gray-50 cursor-pointer transition-colors ${
+                    className={`grid grid-cols-[32px_1fr_180px_1fr] gap-4 items-center px-5 py-3.5 border-b border-gray-50 cursor-pointer transition-colors ${
                       isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
                     }`}
                   >
+                    {/* Checkbox */}
                     <div
                       className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
                         isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300'
@@ -317,24 +380,41 @@ export default function DoseReconciliation() {
                       )}
                     </div>
                     <span className="font-medium text-gray-700 text-sm">{entry.date}</span>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded border w-fit ${cfg.classes}`}
-                    >
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border w-fit ${cfg.classes}`}>
                       {cfg.label}
                     </span>
                     <span className="text-sm text-gray-500">{entry.detectedCause}</span>
                   </div>
                 );
               })}
+
+              {/* Reconciled rows */}
+              {reconciledEntries.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="grid grid-cols-[32px_1fr_180px_1fr] gap-4 items-center px-5 py-3.5 border-b border-gray-50 bg-emerald-50/40"
+                >
+                  <div className="w-4 h-4 rounded border-2 bg-emerald-600 border-emerald-600 flex items-center justify-center">
+                    <svg viewBox="0 0 10 8" className="w-2.5 h-2" fill="none" stroke="white" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M1 4l3 3 5-4" />
+                    </svg>
+                  </div>
+                  <span className="font-medium text-gray-400 text-sm line-through">{entry.date}</span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border w-fit ${RECONCILED_CONFIG.classes}`}>
+                    {RECONCILED_CONFIG.label}
+                  </span>
+                  <span className="text-sm text-gray-400 italic">Reconciled this session</span>
+                </div>
+              ))}
             </>
           )}
 
-          {/* Reconciled entries */}
+          {/* Summary footer */}
           {reconciled.size > 0 && (
-            <div className="px-5 py-3 bg-emerald-50/50 border-t border-emerald-100">
-              <p className="text-xs text-emerald-600 font-medium flex items-center gap-1.5">
-                <ShieldCheck size={12} />
-                {reconciled.size} entr{reconciled.size === 1 ? 'y' : 'ies'} reconciled this session
+            <div className="px-5 py-3 bg-emerald-50 border-t border-emerald-100 flex items-center gap-2">
+              <CheckCircle2 size={13} className="text-emerald-600" />
+              <p className="text-xs text-emerald-700 font-medium">
+                {reconciled.size} entr{reconciled.size === 1 ? 'y' : 'ies'} reconciled — penalties reversed and streak restored.
               </p>
             </div>
           )}
