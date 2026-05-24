@@ -7,9 +7,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Zap,
-  Star,
   ShieldCheck,
   Info,
+  X,
 } from 'lucide-react';
 import {
   LineChart,
@@ -23,14 +23,14 @@ import {
 import { MOCK_PATIENTS, type DayStatus, type HeatmapDay } from '../data/mockData';
 import HeartQuota from '../components/HeartQuota';
 
-// ─── Heatmap Cell ──────────────────────────────────────────────────────────
+// ─── Heatmap constants ─────────────────────────────────────────────────────
 
 const STATUS_STYLE: Record<DayStatus, string> = {
-  'app-recorded': 'bg-emerald-500 text-white hover:bg-emerald-600',
-  'provider-reconciled': 'bg-emerald-700 text-white hover:bg-emerald-800',
-  'technical-miss': 'bg-yellow-400 text-yellow-900 hover:bg-yellow-500',
-  'unverified-absence': 'bg-red-500 text-white hover:bg-red-600',
-  future: 'bg-gray-100 text-gray-300 cursor-default',
+  'app-recorded': 'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95',
+  'provider-reconciled': 'bg-emerald-700 text-white hover:bg-emerald-800 active:scale-95',
+  'technical-miss': 'bg-yellow-400 text-yellow-900 hover:bg-yellow-500 active:scale-95',
+  'unverified-absence': 'bg-red-500 text-white hover:bg-red-600 active:scale-95',
+  future: 'bg-gray-100 text-gray-300 cursor-default opacity-50',
 };
 
 const STATUS_LABEL: Record<DayStatus, string> = {
@@ -41,37 +41,85 @@ const STATUS_LABEL: Record<DayStatus, string> = {
   future: 'Future',
 };
 
-function HeatmapCell({ day, onHover }: {
+const STATUS_BG: Record<DayStatus, string> = {
+  'app-recorded': 'bg-emerald-50 border-emerald-200',
+  'provider-reconciled': 'bg-emerald-50 border-emerald-200',
+  'technical-miss': 'bg-yellow-50 border-yellow-200',
+  'unverified-absence': 'bg-red-50 border-red-200',
+  future: 'bg-gray-50 border-gray-200',
+};
+
+const STATUS_TEXT: Record<DayStatus, string> = {
+  'app-recorded': 'text-emerald-700',
+  'provider-reconciled': 'text-emerald-800',
+  'technical-miss': 'text-yellow-800',
+  'unverified-absence': 'text-red-700',
+  future: 'text-gray-400',
+};
+
+// ─── Heatmap Cell ──────────────────────────────────────────────────────────
+
+function HeatmapCell({
+  day,
+  selected,
+  onClick,
+}: {
   day: HeatmapDay;
-  onHover: (d: HeatmapDay | null) => void;
+  selected: boolean;
+  onClick: (d: HeatmapDay) => void;
 }) {
   if (day.date === null) return <div />;
+  if (day.status === 'future') {
+    return (
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-semibold ${STATUS_STYLE.future}`}>
+        {day.date}
+      </div>
+    );
+  }
 
   return (
-    <div
-      className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-semibold cursor-pointer transition-all relative select-none ${STATUS_STYLE[day.status]}`}
-      onMouseEnter={() => onHover(day)}
-      onMouseLeave={() => onHover(null)}
+    <button
+      onClick={() => onClick(day)}
+      className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-semibold transition-all select-none ring-offset-1 ${
+        STATUS_STYLE[day.status]
+      } ${selected ? 'ring-2 ring-gray-900 scale-110 shadow-lg' : ''}`}
     >
       {day.date}
-    </div>
+    </button>
   );
 }
 
-// ─── Tooltip card ──────────────────────────────────────────────────────────
+// ─── Day Detail Panel ──────────────────────────────────────────────────────
 
-function HoverCard({ day }: { day: HeatmapDay }) {
+function DayDetailPanel({ day, month, onClose }: { day: HeatmapDay; month: string; onClose: () => void }) {
   return (
-    <div className="absolute z-10 left-1/2 -translate-x-1/2 -top-2 -translate-y-full bg-gray-900 text-white rounded-xl p-3 min-w-[200px] shadow-xl pointer-events-none">
-      <div className="flex items-center gap-2 mb-1">
-        <span className={`w-2 h-2 rounded-full ${STATUS_STYLE[day.status].split(' ')[0]}`} />
-        <span className="text-xs font-bold">{STATUS_LABEL[day.status]}</span>
+    <div
+      className={`border rounded-xl p-4 ${STATUS_BG[day.status]} flex items-start gap-3 animate-in fade-in slide-in-from-top-1 duration-150`}
+    >
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${STATUS_STYLE[day.status].split(' ')[0]} text-white shrink-0`}>
+        {day.date}
       </div>
-      {day.note && <p className="text-[11px] text-gray-300 leading-relaxed">{day.note}</p>}
-      <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-3 h-3 bg-gray-900 rotate-45 rounded-sm" />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-0.5">
+          <span className={`text-xs font-bold uppercase tracking-wider ${STATUS_TEXT[day.status]}`}>
+            {STATUS_LABEL[day.status]}
+          </span>
+          <span className="text-[11px] text-gray-400">{month.split(' ')[0]} {day.date}, {month.split(' ')[1]}</span>
+        </div>
+        <p className={`text-[12px] leading-relaxed ${STATUS_TEXT[day.status]} opacity-80`}>
+          {day.note ?? 'Video dose log submitted via Gabby and verified by upload.'}
+        </p>
+      </div>
+      <button
+        onClick={onClose}
+        className="text-gray-400 hover:text-gray-600 transition-colors shrink-0 mt-0.5"
+      >
+        <X size={14} />
+      </button>
     </div>
   );
 }
+
 
 // ─── Custom Recharts Tooltip ───────────────────────────────────────────────
 
@@ -96,7 +144,7 @@ export default function UnifiedAdherenceRecord() {
   const navigate = useNavigate();
   const patient = MOCK_PATIENTS.find((p) => p.id === id);
 
-  const [hoveredDay, setHoveredDay] = useState<HeatmapDay | null>(null);
+  const [selectedDay, setSelectedDay] = useState<HeatmapDay | null>(null);
 
   if (!patient) return <div className="p-8 text-gray-500">Patient not found.</div>;
 
@@ -242,20 +290,26 @@ export default function UnifiedAdherenceRecord() {
               {/* Heatmap grid */}
               <div className="grid grid-cols-7 gap-2">
                 {patient.heatmapDays.map((day, i) => (
-                  <div
-                    key={i}
-                    className="relative flex items-center justify-center"
-                  >
+                  <div key={i} className="flex items-center justify-center">
                     <HeatmapCell
                       day={day}
-                      onHover={(d) => setHoveredDay(d)}
+                      selected={selectedDay === day}
+                      onClick={(d) => setSelectedDay((prev) => (prev === d ? null : d))}
                     />
-                    {hoveredDay === day && day.date !== null && day.status !== 'future' && (
-                      <HoverCard day={day} />
-                    )}
                   </div>
                 ))}
               </div>
+
+              {/* Day detail panel — appears below the grid on click */}
+              {selectedDay && selectedDay.status !== 'future' && (
+                <div className="mt-4">
+                  <DayDetailPanel
+                    day={selectedDay}
+                    month={patient.heatmapMonth}
+                    onClose={() => setSelectedDay(null)}
+                  />
+                </div>
+              )}
 
               {/* Legend */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 pt-5 border-t border-gray-100">
@@ -358,14 +412,6 @@ export default function UnifiedAdherenceRecord() {
                     <span className="font-bold text-gray-600 text-lg">{patient.bestStreak}</span>
                     <span className="text-xs text-gray-400 ml-0.5">days</span>
                   </div>
-                </div>
-              </div>
-
-              <div className="mb-4">
-                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">XP This Month</p>
-                <div className="flex items-center gap-1.5">
-                  <Star size={13} className="text-yellow-500 fill-yellow-400" />
-                  <span className="font-bold text-amber-600 text-lg">{patient.xpThisMonth.toLocaleString()}</span>
                 </div>
               </div>
 
