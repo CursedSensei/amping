@@ -86,15 +86,6 @@ function PatientCard({ patient }: { patient: Patient }) {
           <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Heart Quota</p>
           <HeartQuota filled={patient.heartQuota} />
         </div>
-        {patient.riskTier !== 'safe' && (
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">XP Earned</p>
-            <div className="flex items-center gap-1">
-              <span className="text-[11px] text-yellow-600">⭐</span>
-              <span className="font-bold text-amber-600 text-sm">{patient.xpEarned.toLocaleString()}</span>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* 7-day compliance */}
