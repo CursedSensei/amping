@@ -53,8 +53,6 @@ export interface Patient {
   currentStreak: number;
   bestStreak: number;
   heartQuota: number; // out of 3
-  xpEarned: number;
-  xpThisMonth: number;
   riskTier: RiskTier;
   lastActive: string;
   triggerReason: string;
@@ -90,8 +88,6 @@ export const MOCK_PATIENTS: Patient[] = [
     currentStreak: 65,
     bestStreak: 65,
     heartQuota: 3,
-    xpEarned: 2250,
-    xpThisMonth: 1650,
     riskTier: 'tier2',
     lastActive: '4 days ago',
     triggerReason: '3 unverified misses in 7 days; quota exhausted',
@@ -155,8 +151,6 @@ export const MOCK_PATIENTS: Patient[] = [
     currentStreak: 4,
     bestStreak: 61,
     heartQuota: 3,
-    xpEarned: 450,
-    xpThisMonth: 450,
     riskTier: 'tier1',
     lastActive: '2 days ago',
     triggerReason: '2 unverified misses in past 7 days',
@@ -219,8 +213,6 @@ export const MOCK_PATIENTS: Patient[] = [
     currentStreak: 12,
     bestStreak: 42,
     heartQuota: 2,
-    xpEarned: 3100,
-    xpThisMonth: 980,
     riskTier: 'safe',
     lastActive: 'Today',
     triggerReason: '0 misses in past 30 days, streak active',
@@ -273,8 +265,6 @@ export const MOCK_PATIENTS: Patient[] = [
     currentStreak: 2,
     bestStreak: 78,
     heartQuota: 0,
-    xpEarned: 4200,
-    xpThisMonth: 120,
     riskTier: 'tier3',
     lastActive: '9 days ago',
     triggerReason: '4+ unverified misses; BHW visit attempted, no contact',
@@ -342,8 +332,6 @@ export const MOCK_PATIENTS: Patient[] = [
     currentStreak: 3,
     bestStreak: 24,
     heartQuota: 3,
-    xpEarned: 620,
-    xpThisMonth: 620,
     riskTier: 'tier1',
     lastActive: 'Yesterday',
     triggerReason: '1 unverified miss in past 7 days',
