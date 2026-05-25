@@ -1,0 +1,43 @@
+name: Generate API Schemas to frontend
+
+on:
+  push:
+    paths:
+      - 'backend/*/schemas.py'
+      - 'backend/export_schemas.py'
+      - '.github/workflows/generate_api_schemas.yml'
+
+jobs:
+  generate_api_schemas:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    env:
+      KOTLIN_OUTPUT_DIR: ../frontend/patient/app/src/main/java/com/pinghtdog/amping/api_schemas
+      TYPESCRIPT_OUTPUT_DIR: ../frontend/hc_professional/src/api_types
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install django-ninja==1.6.2 Django==5.2.14
+
+      - name: install quicktype
+        run: npm install -g quicktype
+
+      - name: Generate JSON Schema
+        run: python export_schemas.py
+
+      - name: Commit and Push
+        run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'action@github.com'
+          git add ${KOTLIN_OUTPUT_DIR}/*.kt
+          git add ${TYPESCRIPT_OUTPUT_DIR}/*.ts
+          git commit -m "Auto-update API Schemas from Django Backend" || exit 0
+          git push
