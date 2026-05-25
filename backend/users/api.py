@@ -16,16 +16,16 @@ auth_router = Router()
 
 @auth_router.post("/refresh-token/", )
 @csrf_exempt
-def patient_refresh_token(request, data: RefreshTokenPayload) -> BaseResponse:
-    # Implement token refresh logic here
+def patient_refresh_token(request, data: RefreshTokenPayload):
+    # implement token refresh logic here, e.g. verify refresh token, issue new access token
 
     return BaseResponse(message="Token refreshed successfully")
 
 
 # HEALTHCARE AUTHENTICATION
 
-@auth_router.post("/login/", auth=django_auth)
-def healthcare_login(request, data: LoginHealthProviderPayload) -> BaseResponse:
+@auth_router.post("/login/", auth=django_auth, response=BaseResponse)
+def healthcare_login(request, data: LoginHealthProviderPayload):
     if request.user.is_authenticated:
         raise HttpError(400, "Already logged in")
 
@@ -35,7 +35,7 @@ def healthcare_login(request, data: LoginHealthProviderPayload) -> BaseResponse:
 
     return BaseResponse(message="Login successful")
 
-@auth_router.post("/logout/", auth=django_auth)
+@auth_router.post("/logout/", auth=django_auth, response=BaseResponse)
 def healthcare_logout(request) -> BaseResponse:
     if not request.user.is_authenticated:
         raise HttpError(401, "Not authenticated")
