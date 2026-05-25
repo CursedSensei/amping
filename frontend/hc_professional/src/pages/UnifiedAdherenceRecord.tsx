@@ -23,10 +23,23 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { useReactToPrint } from 'react-to-print';
-import { MOCK_PATIENTS, type DayStatus, type HeatmapDay } from '../data/mockData';
+import { MOCK_PATIENTS, type DayStatus } from '../data/mockData';
 import HeartQuota from '../components/HeartQuota';
 
-// ─── Heatmap status maps ───────────────────────────────────────────────────
+// ─── Local grid cell type ─────────────────────────────────────────────────
+//  'empty'  = day exists in calendar but is before the patient's regimen start
+//             → rendered as a blank, unstyled square (no colour, no number interaction)
+//  DayStatus values are the standard adherence states
+
+type CellStatus = DayStatus | 'empty';
+
+interface GridCell {
+  date: number;
+  status: CellStatus;
+  note?: string;
+}
+
+// ─── Status style maps (keyed on DayStatus only) ──────────────────────────
 
 const STATUS_STYLE: Record<DayStatus, string> = {
   'app-recorded':        'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95',
@@ -60,16 +73,36 @@ const STATUS_TEXT: Record<DayStatus, string> = {
   future:                'text-gray-400',
 };
 
-// ─── Day-of-week helpers ───────────────────────────────────────────────────
+// ─── Calendar helpers ──────────────────────────────────────────────────────
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-/** Returns an array of HeatmapDay with leading null-date padding so the
- *  first real day lands on the correct column (0=Mon … 6=Sun). */
-function buildGridCells(days: HeatmapDay[], startDay: number): (HeatmapDay | null)[] {
-  if (days.length > 0 && days[0].date === null) return days;
-  const padding: null[] = Array(startDay).fill(null);
-  return [...padding, ...days];
+/**
+ * Returns the 0-based column index (0 = Mon … 6 = Sun) for the 1st of the
+ * given month.  JS Date.getDay() uses 0 = Sun, so we rotate.
+ */
+function monthStartCol(year: number, month: number): number {
+  const jsDay = new Date(year, month, 1).getDay(); // 0=Sun
+  return jsDay === 0 ? 6 : jsDay - 1;             // convert to 0=Mon
+}
+
+/**
+ * Builds the flat grid: leading `null` slots for column-padding, then one
+ * GridCell per calendar day.
+ */
+function buildGridCells(
+  year: number,
+  month: number,
+  daysInMonth: number,
+  classify: (day: number) => { status: CellStatus; note?: string },
+): (null | GridCell)[] {
+  const col = monthStartCol(year, month);
+  const cells: (null | GridCell)[] = Array<null>(col).fill(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const { status, note } = classify(d);
+    cells.push({ date: d, status, note });
+  }
+  return cells;
 }
 
 // ─── Calendar Cell ─────────────────────────────────────────────────────────
@@ -79,13 +112,16 @@ function CalCell({
   selected,
   onClick,
 }: {
-  cell: HeatmapDay | null;
+  cell: GridCell;
   selected: boolean;
-  onClick: (d: HeatmapDay) => void;
+  onClick: (c: GridCell) => void;
 }) {
-  if (cell === null) return <div />;
-  if (cell.date === null) return <div />;
+  // Days before regimen start — blank placeholder, no number
+  if (cell.status === 'empty') {
+    return <div className="w-10 h-10 rounded-xl bg-gray-50" />;
+  }
 
+  // Future days — greyed out, not interactive
   if (cell.status === 'future') {
     return (
       <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-semibold ${STATUS_STYLE.future}`}>
@@ -94,11 +130,13 @@ function CalCell({
     );
   }
 
+  // Active adherence days — clickable
+  const style = STATUS_STYLE[cell.status];
   return (
     <button
       onClick={() => onClick(cell)}
       aria-label={`Day ${cell.date}: ${STATUS_LABEL[cell.status]}`}
-      className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-semibold transition-all select-none ring-offset-1 ${STATUS_STYLE[cell.status]} ${selected ? 'ring-2 ring-gray-900 scale-110 shadow-lg' : ''}`}
+      className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-semibold transition-all select-none ring-offset-1 ${style} ${selected ? 'ring-2 ring-gray-900 scale-110 shadow-lg' : ''}`}
     >
       {cell.date}
     </button>
@@ -107,26 +145,46 @@ function CalCell({
 
 // ─── Day Detail Panel ──────────────────────────────────────────────────────
 
-function DayDetailPanel({ day, month, onClose }: { day: HeatmapDay; month: string; onClose: () => void }) {
+function DayDetailPanel({
+  cell,
+  month,
+  onClose,
+}: {
+  cell: GridCell;
+  month: string;
+  onClose: () => void;
+}) {
+  // Only called for real DayStatus cells (not 'empty')
+  const status = cell.status as DayStatus;
   const [mo, yr] = month.split(' ');
+
   return (
-    <div className={`border rounded-xl p-4 ${STATUS_BG[day.status]} flex items-start gap-3`}
-      style={{ animation: 'fadein 0.15s ease' }}>
-      <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${STATUS_STYLE[day.status].split(' ')[0]} text-white shrink-0`}>
-        {day.date}
+    <div
+      className={`border rounded-xl p-4 ${STATUS_BG[status]} flex items-start gap-3`}
+      style={{ animation: 'fadein 0.15s ease' }}
+    >
+      <div
+        className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${STATUS_STYLE[status].split(' ')[0]} text-white shrink-0`}
+      >
+        {cell.date}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-0.5">
-          <span className={`text-xs font-bold uppercase tracking-wider ${STATUS_TEXT[day.status]}`}>
-            {STATUS_LABEL[day.status]}
+          <span className={`text-xs font-bold uppercase tracking-wider ${STATUS_TEXT[status]}`}>
+            {STATUS_LABEL[status]}
           </span>
-          <span className="text-[11px] text-gray-400">{mo} {day.date}, {yr}</span>
+          <span className="text-[11px] text-gray-400">
+            {mo} {cell.date}, {yr}
+          </span>
         </div>
-        <p className={`text-[12px] leading-relaxed ${STATUS_TEXT[day.status]} opacity-80`}>
-          {day.note ?? 'Video dose log submitted via Gabby and verified by upload.'}
+        <p className={`text-[12px] leading-relaxed ${STATUS_TEXT[status]} opacity-80`}>
+          {cell.note ?? 'Video dose log submitted via Gabby and verified by upload.'}
         </p>
       </div>
-      <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors shrink-0 mt-0.5">
+      <button
+        onClick={onClose}
+        className="text-gray-400 hover:text-gray-600 transition-colors shrink-0 mt-0.5"
+      >
         <X size={14} />
       </button>
     </div>
@@ -135,7 +193,11 @@ function DayDetailPanel({ day, month, onClose }: { day: HeatmapDay; month: strin
 
 // ─── Recharts Tooltip ──────────────────────────────────────────────────────
 
-function CustomTooltip({ active, payload, label }: {
+function CustomTooltip({
+  active,
+  payload,
+  label,
+}: {
   active?: boolean;
   payload?: { value: number }[];
   label?: string;
@@ -158,10 +220,7 @@ const PRESET_SYMPTOMS = [
 ];
 
 function SymptomsPanel({ initial }: { initial?: string[] }) {
-  const [items, setItems] = useState<string[]>(() => {
-    const base: string[] = initial ? [...initial] : [];
-    return base;
-  });
+  const [items, setItems] = useState<string[]>(() => (initial ? [...initial] : []));
   const [input, setInput] = useState('');
   const [showPresets, setShowPresets] = useState(false);
 
@@ -182,7 +241,6 @@ function SymptomsPanel({ initial }: { initial?: string[] }) {
         <h3 className="font-semibold text-gray-900 text-sm">Side Effects / Symptoms</h3>
       </div>
 
-      {/* Current items */}
       {items.length === 0 ? (
         <p className="text-[12px] text-gray-400 mb-3 italic">No symptoms logged.</p>
       ) : (
@@ -205,7 +263,6 @@ function SymptomsPanel({ initial }: { initial?: string[] }) {
         </div>
       )}
 
-      {/* Add input */}
       <div className="flex gap-2 mb-2">
         <input
           type="text"
@@ -225,7 +282,6 @@ function SymptomsPanel({ initial }: { initial?: string[] }) {
         </button>
       </div>
 
-      {/* Preset suggestions */}
       {showPresets && (
         <div className="border border-gray-100 rounded-lg p-2 bg-gray-50">
           <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold mb-1.5 px-1">
@@ -271,19 +327,17 @@ export default function UnifiedAdherenceRecord() {
   const patient = MOCK_PATIENTS.find((p) => p.id === id);
   const printRef = useRef<HTMLDivElement>(null);
 
-  const [selectedDay, setSelectedDay] = useState<HeatmapDay | null>(null);
+  const [selectedCell, setSelectedCell] = useState<GridCell | null>(null);
 
-  const [currentDate, setCurrentDate] = useState<Date>(() => {
-    return patient ? new Date(`${patient.heatmapMonth} 1`) : new Date();
-  });
+  const [currentDate, setCurrentDate] = useState<Date>(() =>
+    patient ? new Date(`${patient.heatmapMonth} 1`) : new Date(),
+  );
 
-  const handlePrevMonth = () => {
-    setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
-  };
+  const handlePrevMonth = () =>
+    setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
 
-  const handleNextMonth = () => {
-    setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
-  };
+  const handleNextMonth = () =>
+    setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
 
   const handlePrint = useReactToPrint({
     contentRef: printRef,
@@ -294,65 +348,56 @@ export default function UnifiedAdherenceRecord() {
 
   const isOnTrack = patient.monthPDC >= patient.pdcTarget;
 
-  // Build padded calendar grid
-  const targetMonthStr = currentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase();
+  // ── Derive display strings ────────────────────────────────────────────────
+  const year  = currentDate.getFullYear();
+  const month = currentDate.getMonth(); // 0-11
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  // Normalise both to "MMM YYYY" uppercase for comparison (e.g. "MAY 2026")
+  const viewMonthStr    = currentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase();
   const patientMonthStr = patient.heatmapMonth.toUpperCase();
-  const isPatientMonth = targetMonthStr === patientMonthStr;
+  const isPatientMonth  = viewMonthStr === patientMonthStr;
 
-  let gridCells: (HeatmapDay | null)[] = [];
-  let displayMonthStr = targetMonthStr;
+  const displayMonthStr = isPatientMonth ? patient.heatmapMonth : viewMonthStr;
 
+  // ── Build override look-up from mock data (only for patient's own month) ──
+  const overrideMap = new Map<number, { status: DayStatus; note?: string }>();
   if (isPatientMonth) {
-    gridCells = buildGridCells(patient.heatmapDays, patient.heatmapStartDay);
-    displayMonthStr = patient.heatmapMonth;
-    
-    let firstComplyingIdx = -1;
-    for (let i = 0; i < gridCells.length; i++) {
-      const cell = gridCells[i];
-      if (cell && (cell.status === 'app-recorded' || cell.status === 'provider-reconciled')) {
-        firstComplyingIdx = i;
-        break;
-      }
+    for (const hd of patient.heatmapDays) {
+      if (hd.date !== null) overrideMap.set(hd.date, { status: hd.status, note: hd.note });
     }
-    if (firstComplyingIdx !== -1) {
-      for (let i = 0; i < firstComplyingIdx; i++) {
-        const cell = gridCells[i];
-        if (cell && cell.status === 'unverified-absence') {
-          gridCells[i] = { ...cell, status: 'future' };
-        }
-      }
-    } else {
-      for (let i = 0; i < gridCells.length; i++) {
-        const cell = gridCells[i];
-        if (cell && cell.status === 'unverified-absence') {
-          gridCells[i] = { ...cell, status: 'future' };
-        }
-      }
-    }
-  } else {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    let startDay = new Date(year, month, 1).getDay() - 1;
-    if (startDay === -1) startDay = 6;
-
-    const dummyDays: HeatmapDay[] = [];
-    const now = new Date();
-    for (let i = 1; i <= daysInMonth; i++) {
-      const cellDate = new Date(year, month, i);
-      let status: DayStatus = 'future';
-      if (cellDate < now) {
-         status = 'unverified-absence';
-      }
-      dummyDays.push({
-        date: i,
-        status: status,
-      });
-    }
-    gridCells = buildGridCells(dummyDays, startDay);
-    displayMonthStr = targetMonthStr;
   }
 
+  // ── Boundary dates (time stripped to midnight) ───────────────────────────
+  const regimenStart = new Date(patient.regimentStart);
+  regimenStart.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // ── Per-day classifier ────────────────────────────────────────────────────
+  const classify = (day: number): { status: CellStatus; note?: string } => {
+    const cellDate = new Date(year, month, day);
+
+    // Before regimen start → empty blank cell
+    if (cellDate < regimenStart) return { status: 'empty' };
+
+    // Future date → greyed non-interactive cell
+    if (cellDate > today) return { status: 'future' };
+
+    // Past/present date within regimen
+    if (isPatientMonth && overrideMap.has(day)) {
+      const { status, note } = overrideMap.get(day)!;
+      return { status, note };
+    }
+
+    // Default: patient's own month → app-recorded; other months → unverified
+    return { status: isPatientMonth ? 'app-recorded' : 'unverified-absence' };
+  };
+
+  const gridCells = buildGridCells(year, month, daysInMonth, classify);
+
+  // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden" style={{ animation: 'fadein 0.18s ease' }}>
       {/* Top bar */}
@@ -378,276 +423,309 @@ export default function UnifiedAdherenceRecord() {
         {/* Printable area */}
         <div ref={printRef} className="max-w-6xl mx-auto p-8">
           {/* Page title */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Unified Adherence Record</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Monthly Progress Report & Audit Trail</p>
-        </div>
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-gray-900">Unified Adherence Record</h1>
+            <p className="text-sm text-gray-400 mt-0.5">Monthly Progress Report & Audit Trail</p>
+          </div>
 
-        {/* Patient info card */}
-        <div className="bg-white border border-gray-100 rounded-xl p-6 mb-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Patient Name</p>
-              <p className="font-bold text-gray-900">{patient.name}</p>
-            </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Patient ID</p>
-              <p className="font-medium text-gray-700">{patient.patientId}</p>
-            </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Age Bracket</p>
-              <p className="font-medium text-gray-700">{patient.ageProfile}</p>
-            </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Treatment Progress</p>
-              <div className="flex items-center gap-2 mt-1">
-                <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-blue-500 rounded-full"
-                    style={{ width: `${(patient.currentDay / patient.totalDays) * 100}%` }}
-                  />
-                </div>
-                <span className="text-xs font-semibold text-blue-600">
-                  Day {patient.currentDay} of {patient.totalDays}
-                </span>
+          {/* Patient info card */}
+          <div className="bg-white border border-gray-100 rounded-xl p-6 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Patient Name</p>
+                <p className="font-bold text-gray-900">{patient.name}</p>
               </div>
-            </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Clinic</p>
-              <p className="text-sm text-gray-700">{patient.clinic}</p>
-            </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Provider & BHW</p>
-              <p className="text-sm text-gray-700">{patient.provider}</p>
-              <p className="text-xs text-gray-400">BHW: {patient.bhw}</p>
-            </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Regimen Start</p>
-              <p className="text-sm text-gray-700">{patient.regimentStart}</p>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Patient ID</p>
+                <p className="font-medium text-gray-700">{patient.patientId}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Age Bracket</p>
+                <p className="font-medium text-gray-700">{patient.ageProfile}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Treatment Progress</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 rounded-full"
+                      style={{ width: `${(patient.currentDay / patient.totalDays) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-semibold text-blue-600">
+                    Day {patient.currentDay} of {patient.totalDays}
+                  </span>
+                </div>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Clinic</p>
+                <p className="text-sm text-gray-700">{patient.clinic}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Provider & BHW</p>
+                <p className="text-sm text-gray-700">{patient.provider}</p>
+                <p className="text-xs text-gray-400">BHW: {patient.bhw}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Regimen Start</p>
+                <p className="text-sm text-gray-700">{patient.regimentStart}</p>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Body: two columns */}
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-6">
-          {/* LEFT: Calendar heatmap + PDC trend */}
-          <div className="space-y-6">
-            {/* Calendar card */}
-            <div className="bg-white border border-gray-100 rounded-xl p-6">
-              {/* Header row */}
-              <div className="flex items-center justify-between mb-6">
-                {/* Month nav */}
-                <div className="flex items-center gap-3">
-                  <button onClick={handlePrevMonth} className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors">
-                    <ChevronLeft size={14} className="text-gray-500" />
-                  </button>
-                  <span className="text-sm font-semibold text-gray-700">{displayMonthStr}</span>
-                  <button onClick={handleNextMonth} className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors">
-                    <ChevronRight size={14} className="text-gray-500" />
-                  </button>
+          {/* Body: two columns */}
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-6">
+            {/* LEFT: Calendar heatmap + PDC trend */}
+            <div className="space-y-6">
+              {/* Calendar card */}
+              <div className="bg-white border border-gray-100 rounded-xl p-6">
+                {/* Header row */}
+                <div className="flex items-center justify-between mb-6">
+                  {/* Month nav */}
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handlePrevMonth}
+                      className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors"
+                    >
+                      <ChevronLeft size={14} className="text-gray-500" />
+                    </button>
+                    <span className="text-sm font-semibold text-gray-700">{displayMonthStr}</span>
+                    <button
+                      onClick={handleNextMonth}
+                      className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors"
+                    >
+                      <ChevronRight size={14} className="text-gray-500" />
+                    </button>
+                  </div>
+
+                  {/* PDC badge */}
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <span className="text-4xl font-bold text-gray-900">{patient.monthPDC}%</span>
+                      <p className="text-[11px] text-gray-400 uppercase tracking-wider">
+                        Proportion of Days Covered
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1 items-end">
+                      <span className="text-[11px] text-gray-400">Target ≥{patient.pdcTarget}%</span>
+                      <span
+                        className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                          isOnTrack ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                        }`}
+                      >
+                        {isOnTrack ? '✓ ON TRACK' : '⚠ BELOW TARGET'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
-                {/* PDC badge */}
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <span className="text-4xl font-bold text-gray-900">{patient.monthPDC}%</span>
-                    <p className="text-[11px] text-gray-400 uppercase tracking-wider">
-                      Proportion of Days Covered
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-1 items-end">
-                    <span className="text-[11px] text-gray-400">Target ≥{patient.pdcTarget}%</span>
-                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${isOnTrack ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                      {isOnTrack ? '✓ ON TRACK' : '⚠ BELOW TARGET'}
+                {/* Month 3 badge */}
+                {patient.month3Protected && (
+                  <div className="flex items-center gap-2 bg-teal-50 border border-teal-100 rounded-lg px-3 py-2 mb-4">
+                    <ShieldCheck size={13} className="text-teal-600" />
+                    <span className="text-xs font-semibold text-teal-700">
+                      Month 3 Adherence Protection Active
                     </span>
                   </div>
+                )}
+
+                {/* Day-of-week header */}
+                <div className="grid grid-cols-7 gap-2 mb-2">
+                  {DOW_LABELS.map((d) => (
+                    <div key={d} className="text-[11px] text-gray-400 font-medium text-center">
+                      {d}
+                    </div>
+                  ))}
                 </div>
-              </div>
 
-              {/* Month 3 badge */}
-              {patient.month3Protected && (
-                <div className="flex items-center gap-2 bg-teal-50 border border-teal-100 rounded-lg px-3 py-2 mb-4">
-                  <ShieldCheck size={13} className="text-teal-600" />
-                  <span className="text-xs font-semibold text-teal-700">Month 3 Adherence Protection Active</span>
+                {/* Calendar grid */}
+                <div className="grid grid-cols-7 gap-2">
+                  {gridCells.map((cell, i) =>
+                    cell === null ? (
+                      // Column-padding slot
+                      <div key={`pad-${i}`} />
+                    ) : (
+                      <div key={`${cell.date}-${i}`} className="flex items-center justify-center">
+                        <CalCell
+                          cell={cell}
+                          selected={selectedCell?.date === cell.date && selectedCell?.status === cell.status}
+                          onClick={(c) => setSelectedCell((prev) => (prev?.date === c.date ? null : c))}
+                        />
+                      </div>
+                    ),
+                  )}
                 </div>
-              )}
 
-              {/* Day-of-week header */}
-              <div className="grid grid-cols-7 gap-2 mb-2">
-                {DOW_LABELS.map((d) => (
-                  <div key={d} className="text-[11px] text-gray-400 font-medium text-center">{d}</div>
-                ))}
-              </div>
-
-              {/* Calendar grid — padded so days land on correct columns */}
-              <div className="grid grid-cols-7 gap-2">
-                {gridCells.map((cell, i) =>
-                  cell === null ? (
-                    <div key={`pad-${i}`} />
-                  ) : (
-                    <div key={`${cell.date}-${i}`} className="flex items-center justify-center">
-                      <CalCell
-                        cell={cell}
-                        selected={selectedDay === cell}
-                        onClick={(d) => setSelectedDay((prev) => (prev === d ? null : d))}
+                {/* Day detail panel — only for real, non-empty, non-future cells */}
+                {selectedCell &&
+                  selectedCell.status !== 'future' &&
+                  selectedCell.status !== 'empty' && (
+                    <div className="mt-4">
+                      <DayDetailPanel
+                        cell={selectedCell}
+                        month={displayMonthStr}
+                        onClose={() => setSelectedCell(null)}
                       />
                     </div>
-                  )
+                  )}
+
+                {/* Legend */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 pt-5 border-t border-gray-100">
+                  {(
+                    [
+                      { status: 'app-recorded'        as DayStatus, title: 'App-Recorded',        desc: 'Video dose logs submitted via Gabby and verified by upload.' },
+                      { status: 'provider-reconciled' as DayStatus, title: 'Provider-Reconciled', desc: 'Provider or BHW manually verified; dose counted in PDC. Penalty reversed.' },
+                      { status: 'technical-miss'      as DayStatus, title: 'Technical Miss',       desc: 'App crash or connectivity failure detected. No penalty applied.' },
+                      { status: 'unverified-absence'  as DayStatus, title: 'Unverified Absence',   desc: 'No dose record, no reconciliation. Penalty applied.' },
+                    ] as const
+                  ).map((leg) => (
+                    <div key={leg.status} className="flex gap-2">
+                      <div className={`w-5 h-5 rounded-md shrink-0 ${STATUS_STYLE[leg.status].split(' ')[0]} mt-0.5`} />
+                      <div>
+                        <p className="text-[11px] font-semibold text-gray-800 uppercase tracking-wide">
+                          {leg.title}
+                        </p>
+                        <p className="text-[10px] text-gray-400 leading-relaxed">{leg.desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* PDC Trend */}
+              <div className="bg-white border border-gray-100 rounded-xl p-6">
+                <h3 className="font-semibold text-gray-900 mb-1 text-sm">Weekly PDC Trend</h3>
+                <p className="text-xs text-gray-400 mb-4">Proportion of Days Covered by week</p>
+                <ResponsiveContainer width="100%" height={160}>
+                  <LineChart data={patient.pdcTrend} margin={{ top: 8, right: 16, left: -16, bottom: 0 }}>
+                    <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                    <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <ReferenceLine
+                      y={patient.pdcTarget}
+                      stroke="#f59e0b"
+                      strokeDasharray="4 4"
+                      label={{ value: `Target ${patient.pdcTarget}%`, fill: '#f59e0b', fontSize: 10, position: 'right' }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="pdc"
+                      stroke="#3b82f6"
+                      strokeWidth={2.5}
+                      dot={{ fill: '#3b82f6', r: 4 }}
+                      activeDot={{ r: 6, fill: '#1d4ed8' }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+                <div className="flex items-center gap-4 mt-3 text-[11px]">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-6 border-t-2 border-blue-500 border-dashed inline-block" />
+                    <span className="text-gray-500">PDC this month</span>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-6 border-t-2 border-amber-400 border-dashed inline-block" />
+                    <span className="text-gray-500">Target ≥{patient.pdcTarget}%</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Reconcile CTA */}
+              {patient.anomalousEntries.length > 0 && (
+                <button
+                  onClick={() => navigate(`/patient/${id}/reconcile`)}
+                  className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white text-sm font-semibold py-3 rounded-xl hover:bg-blue-700 transition-colors print:hidden"
+                >
+                  <ShieldCheck size={15} />
+                  Reconcile Anomalous Entries ({patient.anomalousEntries.length})
+                </button>
+              )}
+            </div>
+
+            {/* RIGHT: Gamification state + symptoms */}
+            <div className="space-y-4">
+              {/* Gamification card */}
+              <div className="bg-white border border-gray-100 rounded-xl p-5">
+                <h3 className="font-semibold text-gray-900 mb-4 text-sm">Gamification State</h3>
+
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Current Streak</p>
+                    <div className="flex items-center gap-1">
+                      <Zap size={15} className="text-yellow-500 fill-yellow-400" />
+                      <span className="font-bold text-gray-900 text-lg">{patient.currentStreak}</span>
+                      <span className="text-xs text-gray-400 ml-0.5">days</span>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Best Streak</p>
+                    <div className="flex items-center gap-1">
+                      <span className="font-bold text-gray-600 text-lg">{patient.bestStreak}</span>
+                      <span className="text-xs text-gray-400 ml-0.5">days</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mb-5">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Heart Quota</p>
+                  <HeartQuota filled={patient.heartQuota} />
+                </div>
+
+                {patient.penaltyHistory.length > 0 && (
+                  <div className="border-t border-gray-100 pt-4">
+                    <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-3">Penalty History (May)</p>
+                    <div className="space-y-2">
+                      {patient.penaltyHistory.map((ev, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <span
+                            className={`text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center ${
+                              ev.tier === 1 ? 'bg-yellow-100 text-yellow-700' : 'bg-orange-100 text-orange-700'
+                            }`}
+                          >
+                            T{ev.tier}
+                          </span>
+                          <div>
+                            <p className="text-[11px] font-semibold text-gray-700">{ev.date} Penalty</p>
+                            <p className="text-[10px] text-gray-400">{ev.label}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
 
-              {/* Day detail panel */}
-              {selectedDay && selectedDay.status !== 'future' && (
-                <div className="mt-4">
-                  <DayDetailPanel
-                    day={selectedDay}
-                    month={patient.heatmapMonth}
-                    onClose={() => setSelectedDay(null)}
-                  />
+              {/* Symptoms panel */}
+              <SymptomsPanel initial={patient.symptomReported} />
+
+              {/* Month 3 protection card */}
+              {patient.month3Protected && (
+                <div className="bg-teal-50 border border-teal-100 rounded-xl p-5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <ShieldCheck size={14} className="text-teal-600" />
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-teal-700">
+                      Month 3 Adherence Protection Active
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-teal-600 leading-relaxed">
+                    Days 61–90 active. Last Tier downgrade: Tier 2 applied instead of Tier 3. Streak preserved via
+                    baseline formula (⌊61 × 0.75⌋ = 45 days).
+                  </p>
                 </div>
               )}
 
-              {/* Legend */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 pt-5 border-t border-gray-100">
-                {([
-                  { status: 'app-recorded'        as DayStatus, title: 'App-Recorded',        desc: 'Video dose logs submitted via Gabby and verified by upload.' },
-                  { status: 'provider-reconciled' as DayStatus, title: 'Provider-Reconciled', desc: 'Provider or BHW manually verified; dose counted in PDC. Penalty reversed.' },
-                  { status: 'technical-miss'      as DayStatus, title: 'Technical Miss',       desc: 'App crash or connectivity failure detected. No penalty applied.' },
-                  { status: 'unverified-absence'  as DayStatus, title: 'Unverified Absence',   desc: 'No dose record, no reconciliation. Penalty applied.' },
-                ]).map((leg) => (
-                  <div key={leg.status} className="flex gap-2">
-                    <div className={`w-5 h-5 rounded-md shrink-0 ${STATUS_STYLE[leg.status].split(' ')[0]} mt-0.5`} />
-                    <div>
-                      <p className="text-[11px] font-semibold text-gray-800 uppercase tracking-wide">{leg.title}</p>
-                      <p className="text-[10px] text-gray-400 leading-relaxed">{leg.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* PDC Trend */}
-            <div className="bg-white border border-gray-100 rounded-xl p-6">
-              <h3 className="font-semibold text-gray-900 mb-1 text-sm">Weekly PDC Trend</h3>
-              <p className="text-xs text-gray-400 mb-4">Proportion of Days Covered by week</p>
-              <ResponsiveContainer width="100%" height={160}>
-                <LineChart data={patient.pdcTrend} margin={{ top: 8, right: 16, left: -16, bottom: 0 }}>
-                  <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <ReferenceLine
-                    y={patient.pdcTarget}
-                    stroke="#f59e0b"
-                    strokeDasharray="4 4"
-                    label={{ value: `Target ${patient.pdcTarget}%`, fill: '#f59e0b', fontSize: 10, position: 'right' }}
-                  />
-                  <Line type="monotone" dataKey="pdc" stroke="#3b82f6" strokeWidth={2.5} dot={{ fill: '#3b82f6', r: 4 }} activeDot={{ r: 6, fill: '#1d4ed8' }} />
-                </LineChart>
-              </ResponsiveContainer>
-              <div className="flex items-center gap-4 mt-3 text-[11px]">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-6 border-t-2 border-blue-500 border-dashed inline-block" />
-                  <span className="text-gray-500">PDC this month</span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-6 border-t-2 border-amber-400 border-dashed inline-block" />
-                  <span className="text-gray-500">Target ≥{patient.pdcTarget}%</span>
-                </span>
-              </div>
-            </div>
-
-            {/* Reconcile CTA */}
-            {patient.anomalousEntries.length > 0 && (
-              <button
-                onClick={() => navigate(`/patient/${id}/reconcile`)}
-                className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white text-sm font-semibold py-3 rounded-xl hover:bg-blue-700 transition-colors print:hidden"
-              >
-                <ShieldCheck size={15} />
-                Reconcile Anomalous Entries ({patient.anomalousEntries.length})
-              </button>
-            )}
-          </div>
-
-          {/* RIGHT: Gamification state + symptoms */}
-          <div className="space-y-4">
-            {/* Gamification card */}
-            <div className="bg-white border border-gray-100 rounded-xl p-5">
-              <h3 className="font-semibold text-gray-900 mb-4 text-sm">Gamification State</h3>
-
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Current Streak</p>
-                  <div className="flex items-center gap-1">
-                    <Zap size={15} className="text-yellow-500 fill-yellow-400" />
-                    <span className="font-bold text-gray-900 text-lg">{patient.currentStreak}</span>
-                    <span className="text-xs text-gray-400 ml-0.5">days</span>
-                  </div>
+              {/* Info card */}
+              <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
+                <div className="flex items-start gap-2">
+                  <Info size={13} className="text-gray-400 mt-0.5 shrink-0" />
+                  <p className="text-[11px] text-gray-500 leading-relaxed">
+                    This record combines video entries, provider adjustments, technical connectivity issues, and
+                    unverified gaps into a single audit-ready history.
+                  </p>
                 </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Best Streak</p>
-                  <div className="flex items-center gap-1">
-                    <span className="font-bold text-gray-600 text-lg">{patient.bestStreak}</span>
-                    <span className="text-xs text-gray-400 ml-0.5">days</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mb-5">
-                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Heart Quota</p>
-                <HeartQuota filled={patient.heartQuota} />
-              </div>
-
-              {/* Penalty history */}
-              {patient.penaltyHistory.length > 0 && (
-                <div className="border-t border-gray-100 pt-4">
-                  <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-3">Penalty History (May)</p>
-                  <div className="space-y-2">
-                    {patient.penaltyHistory.map((ev, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <span className={`text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center ${ev.tier === 1 ? 'bg-yellow-100 text-yellow-700' : 'bg-orange-100 text-orange-700'}`}>
-                          T{ev.tier}
-                        </span>
-                        <div>
-                          <p className="text-[11px] font-semibold text-gray-700">{ev.date} Penalty</p>
-                          <p className="text-[10px] text-gray-400">{ev.label}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Symptoms panel */}
-            <SymptomsPanel initial={patient.symptomReported} />
-
-            {/* Month 3 protection card */}
-            {patient.month3Protected && (
-              <div className="bg-teal-50 border border-teal-100 rounded-xl p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <ShieldCheck size={14} className="text-teal-600" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-teal-700">
-                    Month 3 Adherence Protection Active
-                  </span>
-                </div>
-                <p className="text-[11px] text-teal-600 leading-relaxed">
-                  Days 61–90 active. Last Tier downgrade: Tier 2 applied instead of Tier 3. Streak preserved via baseline formula (⌊61 × 0.75⌋ = 45 days).
-                </p>
-              </div>
-            )}
-
-            {/* Info card */}
-            <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
-              <div className="flex items-start gap-2">
-                <Info size={13} className="text-gray-400 mt-0.5 shrink-0" />
-                <p className="text-[11px] text-gray-500 leading-relaxed">
-                  This record combines video entries, provider adjustments, technical connectivity issues, and unverified gaps into a single audit-ready history.
-                </p>
               </div>
             </div>
           </div>
         </div>
-      </div>
       </div>
     </div>
   );
