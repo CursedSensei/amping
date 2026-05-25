@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -12,7 +12,9 @@ import {
   X,
   Download,
   CheckCircle2,
+  ImageIcon,
 } from 'lucide-react';
+import { useReactToPrint } from 'react-to-print';
 import Sidebar from '../components/Sidebar';
 import { MOCK_PATIENTS, type Patient, type RiskTier } from '../data/mockData';
 
@@ -52,7 +54,6 @@ function BHWModal({ patient, onClose }: { patient: Patient; onClose: () => void 
   return (
     <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden border border-orange-100">
-        {/* Header */}
         <div className="flex items-center gap-4 p-6 bg-orange-50 border-b border-orange-100">
           <div className="w-11 h-11 rounded-full bg-white border-2 border-orange-200 flex items-center justify-center shrink-0">
             <UserCheck size={22} className="text-orange-600" />
@@ -62,7 +63,6 @@ function BHWModal({ patient, onClose }: { patient: Patient; onClose: () => void 
             <p className="text-[11px] font-semibold uppercase tracking-widest text-orange-600">Tier 2 Escalation</p>
           </div>
         </div>
-
         <div className="p-6">
           {confirmed ? (
             <div className="flex flex-col items-center py-4 gap-3 text-center">
@@ -83,19 +83,12 @@ function BHWModal({ patient, onClose }: { patient: Patient; onClose: () => void 
             </>
           )}
         </div>
-
         {!confirmed && (
           <div className="p-6 pt-0 flex gap-3">
-            <button
-              onClick={onClose}
-              className="flex-1 border border-gray-200 text-gray-600 text-sm font-medium py-2.5 rounded-xl hover:bg-gray-50 transition-colors"
-            >
+            <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 text-sm font-medium py-2.5 rounded-xl hover:bg-gray-50 transition-colors">
               Cancel
             </button>
-            <button
-              onClick={handleConfirm}
-              className="flex-1 bg-orange-500 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-orange-600 transition-colors"
-            >
+            <button onClick={handleConfirm} className="flex-1 bg-orange-500 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-orange-600 transition-colors">
               Confirm Dispatch
             </button>
           </div>
@@ -105,88 +98,207 @@ function BHWModal({ patient, onClose }: { patient: Patient; onClose: () => void 
   );
 }
 
-// ─── DOT Order Print Modal ──────────────────────────────────────────────────
+// ─── DOT Order Modal ────────────────────────────────────────────────────────
 
 function DOTModal({ patient, onClose }: { patient: Patient; onClose: () => void }) {
+  const printRef = useRef<HTMLDivElement>(null);
+
+  // Editable fields — pre-filled with patient data
+  const [reason, setReason] = useState(patient.triggerReason);
+  const [body, setBody] = useState(
+    'By order of the attending provider, the patient listed above is hereby mandated to return to ' +
+    'in-person Directly Observed Therapy (DOT) immediately. Gamified application privileges are ' +
+    'suspended pending provider review.'
+  );
+
+  // Signature image state
+  const [sigImg, setSigImg] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: `DOT_Order_${patient.patientId}`,
+  });
+
+  // Load image from File object
+  const loadFile = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (e) => setSigImg(e.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) loadFile(file);
+  }, []);
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) loadFile(file);
+  };
+
+  const today = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+
   return (
     <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden border border-gray-200 flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-b border-gray-200">
-          <h3 className="font-bold text-gray-900">Document Preview</h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 bg-gray-200 p-1.5 rounded-full transition-colors"
-          >
+      <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden border border-gray-200 flex flex-col max-h-[92vh]">
+        {/* Modal header */}
+        <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-b border-gray-200 shrink-0">
+          <div>
+            <h3 className="font-bold text-gray-900">DOT Reinstatement Order</h3>
+            <p className="text-[11px] text-gray-400 mt-0.5">Edit the document below, then export or print.</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 bg-gray-200 hover:bg-gray-300 p-1.5 rounded-full transition-colors">
             <X size={16} />
           </button>
         </div>
 
-        {/* Document */}
-        <div className="flex-1 overflow-y-auto bg-gray-200 p-6 flex justify-center shadow-inner">
-          <div className="bg-white w-full max-w-lg p-10 shadow-lg border border-gray-300 flex flex-col gap-6 font-serif text-gray-800 text-sm">
-            {/* Doc header */}
-            <div className="text-center border-b-2 border-gray-800 pb-5">
-              <h1 className="text-xl font-black uppercase tracking-widest text-gray-900">
-                Department of Health
-              </h1>
-              <h2 className="text-lg font-bold uppercase mt-1">DOT Reinstatement Order</h2>
-              <p className="text-xs font-bold text-gray-400 mt-1 tracking-widest font-sans">FORM EC-10</p>
-            </div>
-
-            {/* Fields */}
-            <div className="grid grid-cols-2 gap-y-5 gap-x-6 font-sans">
-              {[
-                { label: 'Date', value: 'May 24, 2026' },
-                { label: 'Clinic', value: patient.clinic },
-                { label: 'Patient Name', value: patient.name },
-                { label: 'Patient ID', value: patient.patientId },
-                { label: 'Age Profile', value: patient.ageProfile },
-                { label: 'Treatment Day', value: `Day ${patient.currentDay} of ${patient.totalDays}` },
-              ].map((f) => (
-                <div key={f.label}>
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">{f.label}</p>
-                  <p className="font-bold text-base text-gray-900">{f.value}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Reason */}
-            <div className="font-sans">
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
+        {/* Two-column: editor controls (left) + document preview (right) */}
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {/* Left — edit panel */}
+          <div className="w-64 shrink-0 border-r border-gray-100 p-5 overflow-y-auto space-y-5 bg-gray-50">
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
                 Reason for Escalation
-              </p>
-              <p className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 font-medium">
-                {patient.triggerReason}
-              </p>
+              </label>
+              <textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={4}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+              />
             </div>
 
-            {/* Body */}
-            <p className="text-justify leading-relaxed font-sans">
-              By order of the attending provider, the patient listed above is hereby mandated to return to
-              in-person Directly Observed Therapy (DOT) immediately. Gamified application privileges are
-              suspended pending provider review.
-            </p>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+                Order Body
+              </label>
+              <textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                rows={6}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+              />
+            </div>
 
-            {/* Signature */}
-            <div className="mt-10 flex justify-end">
-              <div className="w-52 border-t-2 border-gray-800 pt-2 text-center font-sans">
-                <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">
-                  Provider Signature
-                </p>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+                Provider Signature
+              </label>
+              {sigImg ? (
+                <div className="relative border border-gray-200 rounded-lg overflow-hidden">
+                  <img src={sigImg} alt="Signature" className="w-full max-h-24 object-contain bg-white p-2" />
+                  <button
+                    onClick={() => setSigImg(null)}
+                    className="absolute top-1 right-1 bg-white rounded-full p-0.5 text-gray-400 hover:text-red-500 shadow"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ) : (
+                <div
+                  onDrop={onDrop}
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-lg p-4 flex flex-col items-center gap-2 cursor-pointer transition-colors ${dragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/50'}`}
+                >
+                  <ImageIcon size={20} className="text-gray-300" />
+                  <p className="text-[11px] text-gray-400 text-center">Drag & drop or click to upload signature image</p>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={onFileChange}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right — document preview */}
+          <div className="flex-1 overflow-y-auto bg-gray-200 p-6 flex justify-center">
+            <div
+              ref={printRef}
+              className="bg-white w-full max-w-lg p-10 shadow-lg border border-gray-300 flex flex-col gap-6 font-serif text-gray-800 text-sm min-h-[600px]"
+            >
+              {/* DoH letterhead */}
+              <div className="text-center border-b-2 border-gray-800 pb-5">
+                <div className="flex items-center justify-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-full bg-blue-700 flex items-center justify-center text-white text-[10px] font-black">DoH</div>
+                  <div className="text-left">
+                    <h1 className="text-base font-black uppercase tracking-widest text-gray-900 leading-tight">
+                      Department of Health
+                    </h1>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-widest">Republic of the Philippines</p>
+                  </div>
+                </div>
+                <h2 className="text-lg font-bold uppercase mt-2">DOT Reinstatement Order</h2>
+                <p className="text-[10px] font-bold text-gray-400 mt-0.5 tracking-widest font-sans">FORM EC-10</p>
+              </div>
+
+              {/* Patient info fields */}
+              <div className="grid grid-cols-2 gap-y-5 gap-x-6 font-sans">
+                {[
+                  { label: 'Date',           value: today },
+                  { label: 'Clinic',         value: patient.clinic },
+                  { label: 'Patient Name',   value: patient.name },
+                  { label: 'Patient ID',     value: patient.patientId },
+                  { label: 'Age Profile',    value: patient.ageProfile },
+                  { label: 'Treatment Day',  value: `Day ${patient.currentDay} of ${patient.totalDays}` },
+                ].map((f) => (
+                  <div key={f.label}>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">{f.label}</p>
+                    <p className="font-bold text-base text-gray-900 break-words">{f.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Reason — shows live edits */}
+              <div className="font-sans">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Reason for Escalation</p>
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 font-medium whitespace-pre-wrap">
+                  {reason || '(no reason entered)'}
+                </div>
+              </div>
+
+              {/* Body — shows live edits */}
+              <p className="text-justify leading-relaxed font-sans whitespace-pre-wrap">
+                {body}
+              </p>
+
+              {/* Signature */}
+              <div className="mt-auto pt-10 flex justify-end">
+                <div className="w-56 text-center font-sans">
+                  {sigImg ? (
+                    <img src={sigImg} alt="Signature" className="w-full max-h-16 object-contain mb-1" />
+                  ) : (
+                    <div className="h-10 border-b-2 border-gray-800 mb-1" />
+                  )}
+                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Provider Signature</p>
+                  <p className="text-[11px] text-gray-600 mt-0.5">{patient.provider}</p>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex gap-3 justify-end">
-          <button className="flex items-center gap-1.5 border border-gray-200 text-gray-600 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+        {/* Footer actions */}
+        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex gap-3 justify-end shrink-0">
+          <button
+            onClick={() => handlePrint()}
+            className="flex items-center gap-1.5 border border-gray-200 text-gray-600 text-sm font-medium px-4 py-2 rounded-lg hover:bg-white transition-colors"
+          >
             <Download size={14} />
-            Download PDF
+            Export PDF
           </button>
           <button
-            onClick={onClose}
+            onClick={() => handlePrint()}
             className="flex items-center gap-1.5 bg-red-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
           >
             <Printer size={14} />
@@ -212,7 +324,7 @@ const TIER_CONFIG: Record<RiskTier, {
     label: 'Tier 1 (Low-Mid) — Care Message',
     dotColor: 'bg-yellow-400',
     badgeClasses: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-    actionLabel: 'SEND CARE MESSAGE',
+    actionLabel: 'SEND MESSAGE',
     ActionIcon: MessageSquare,
     actionClasses: 'bg-yellow-500 hover:bg-yellow-600',
   },
@@ -220,7 +332,7 @@ const TIER_CONFIG: Record<RiskTier, {
     label: 'Tier 2 (High/Sustained) — BHW Visit',
     dotColor: 'bg-orange-500',
     badgeClasses: 'bg-orange-100 text-orange-700 border-orange-200',
-    actionLabel: 'DISPATCH BHW VISIT',
+    actionLabel: 'DISPATCH VISIT',
     ActionIcon: UserCheck,
     actionClasses: 'bg-orange-500 hover:bg-orange-600',
   },
@@ -275,20 +387,12 @@ function ActionButton({
   return (
     <button
       onClick={handleClick}
-      className={`flex items-center gap-1.5 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-colors ${
-        triggered ? 'bg-green-500 cursor-default' : cfg.actionClasses
-      }`}
+      className={`flex items-center gap-1.5 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-colors ${triggered ? 'bg-green-500 cursor-default' : cfg.actionClasses}`}
     >
       {triggered ? (
-        <>
-          <CheckCircle2 size={12} />
-          SENT
-        </>
+        <><CheckCircle2 size={12} /> SENT</>
       ) : (
-        <>
-          <Icon size={12} />
-          {cfg.actionLabel}
-        </>
+        <><Icon size={12} /> {cfg.actionLabel}</>
       )}
     </button>
   );
@@ -328,50 +432,38 @@ export default function RiskStratification() {
   );
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
       <Sidebar />
 
-      {/* Toast */}
       {toast && <Toast message={toast} onDismiss={() => setToast('')} />}
-
-      {/* BHW Modal */}
       {bhwPatient && <BHWModal patient={bhwPatient} onClose={() => setBhwPatient(null)} />}
-
-      {/* DOT Modal */}
       {dotPatient && <DOTModal patient={dotPatient} onClose={() => setDotPatient(null)} />}
 
-      <main className="flex-1 p-8 overflow-y-auto">
-        {/* Page header */}
+      <main className="flex-1 p-8 overflow-y-auto h-full">
         <div className="mb-6">
-          <button
-            onClick={() => navigate('/')}
-            className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-blue-600 mb-2 transition-colors"
-          >
+          <button onClick={() => navigate('/')} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-blue-600 mb-2 transition-colors">
             <ArrowLeft size={14} />
             Back to Roster
           </button>
           <h1 className="text-2xl font-bold text-gray-900">Risk Stratification & Escalation Center</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
-            Identify patients at risk of treatment abandonment and trigger escalation workflows.
-          </p>
+          <p className="text-sm text-gray-400 mt-0.5">Identify patients at risk of treatment abandonment and trigger escalation workflows.</p>
         </div>
 
         {/* Escalation Reset Rule */}
         <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6">
           <ShieldCheck size={15} className="text-blue-500 mt-0.5 shrink-0" />
           <p className="text-sm text-blue-700">
-            <strong>Escalation Reset rule:</strong> If a provider logs a manual dose reconciliation (see Dose
-            Reconciliation), the active alert clears and risk resets to baseline.
+            <strong>Escalation Reset rule:</strong> If a provider logs a manual dose reconciliation (see Dose Reconciliation), the active alert clears and risk resets to baseline.
           </p>
         </div>
 
-        {/* Stats row */}
+        {/* Stats */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           {[
-            { label: 'Total Active Patients', value: stats.total, icon: Users, color: 'text-gray-900', bg: 'bg-white' },
-            { label: 'At Risk', value: stats.atRisk, icon: AlertOctagon, color: 'text-red-600', bg: 'bg-red-50' },
-            { label: 'Safe', value: stats.safe, icon: ShieldCheck, color: 'text-green-600', bg: 'bg-green-50' },
-            { label: 'Month 3 Protected', value: stats.month3, icon: AlertTriangle, color: 'text-teal-600', bg: 'bg-teal-50' },
+            { label: 'Total Active Patients', value: stats.total,  icon: Users,         color: 'text-gray-900',  bg: 'bg-white' },
+            { label: 'At Risk',               value: stats.atRisk, icon: AlertOctagon,  color: 'text-red-600',   bg: 'bg-red-50' },
+            { label: 'Safe',                  value: stats.safe,   icon: ShieldCheck,   color: 'text-green-600', bg: 'bg-green-50' },
+            { label: 'Month 3 Protected',     value: stats.month3, icon: AlertTriangle, color: 'text-teal-600',  bg: 'bg-teal-50' },
           ].map((s) => (
             <div key={s.label} className={`${s.bg} border border-gray-100 rounded-xl p-4 flex flex-col items-center`}>
               <span className={`text-3xl font-bold ${s.color}`}>{s.value}</span>
@@ -381,17 +473,37 @@ export default function RiskStratification() {
         </div>
 
         {/* Tier legend */}
-        <div className="bg-white border border-gray-100 rounded-xl p-4 mb-6">
-          <p className="text-[11px] uppercase tracking-wider text-gray-400 mb-3 font-semibold">
+        <div className="bg-white border border-gray-100 rounded-xl overflow-hidden mb-6">
+          <p className="text-[11px] uppercase tracking-wider text-gray-400 bg-gray-50 px-5 py-3 border-b border-gray-100 font-semibold">
             Escalation Tier System
           </p>
-          <div className="flex flex-wrap gap-4 text-xs font-medium">
-            {(Object.entries(TIER_CONFIG) as [RiskTier, typeof TIER_CONFIG[RiskTier]][]).map(([, cfg]) => (
-              <div key={cfg.label} className="flex items-center gap-1.5">
-                <span className={`w-2.5 h-2.5 rounded-full ${cfg.dotColor}`} />
-                <span className="text-gray-600">{cfg.label}</span>
-              </div>
-            ))}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-gray-600">
+              <thead className="bg-gray-50 border-b border-gray-100 text-[10px]">
+                <tr>
+                  <th className="px-5 py-2.5 font-semibold text-gray-400 uppercase tracking-wider">Tier Level</th>
+                  <th className="px-5 py-2.5 font-semibold text-gray-400 uppercase tracking-wider">Required Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {(Object.entries(TIER_CONFIG) as [RiskTier, typeof TIER_CONFIG[RiskTier]][]).map(([, cfg]) => {
+                  const parts = cfg.label.split(' — ');
+                  const level = parts[0];
+                  const response = parts.slice(1).join(' — ') || 'No action required';
+                  return (
+                    <tr key={cfg.label} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-5 py-3 w-1/2">
+                        <div className="flex items-center gap-2.5">
+                          <span className={`w-2 h-2 rounded-full ${cfg.dotColor} shrink-0`} />
+                          <span className="font-semibold text-gray-800">{level}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 text-gray-500 w-1/2">{response}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -411,22 +523,17 @@ export default function RiskStratification() {
                 onClick={() => navigate(`/patient/${patient.id}`)}
                 className="grid grid-cols-[2fr_1fr_1.5fr_2fr_1fr_1.5fr] gap-4 items-center px-6 py-4 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
               >
-                {/* Patient */}
                 <div>
                   <p className="font-semibold text-gray-900 text-sm">{patient.name}</p>
                   <p className="text-[11px] text-gray-400">{patient.patientId} · {patient.ageProfile}</p>
                 </div>
-
-                {/* Progress */}
                 <ProgressBar current={patient.currentDay} total={patient.totalDays} />
-
-                {/* Risk tier */}
                 <div className="flex flex-col gap-1">
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded border w-fit ${tierCfg.badgeClasses}`}>
-                    {patient.riskTier === 'safe' ? 'SAFE (NO RISK)'
-                      : patient.riskTier === 'tier1' ? 'TIER 1 (LOW-MID)'
-                      : patient.riskTier === 'tier2' ? 'TIER 2 (HIGH/SUSTAINED)'
-                      : 'TIER 3 (CRITICAL)'}
+                    {patient.riskTier === 'safe'  ? 'SAFE (NO RISK)'
+                     : patient.riskTier === 'tier1' ? 'TIER 1 (LOW-MID)'
+                     : patient.riskTier === 'tier2' ? 'TIER 2 (HIGH/SUSTAINED)'
+                     : 'TIER 3 (CRITICAL)'}
                   </span>
                   {patient.month3Protected && (
                     <span className="text-[9px] font-semibold px-2 py-0.5 rounded border bg-teal-50 text-teal-700 border-teal-200 w-fit">
@@ -434,21 +541,13 @@ export default function RiskStratification() {
                     </span>
                   )}
                 </div>
-
-                {/* Trigger reason */}
                 <p className="text-xs text-gray-500">{patient.triggerReason}</p>
-
-                {/* Last active */}
                 <p className="text-xs text-gray-500">{patient.lastActive}</p>
-
-                {/* Action */}
                 <div onClick={(e) => e.stopPropagation()}>
                   <ActionButton
                     patient={patient}
                     onCareMessage={() =>
-                      setToast(
-                        `Care message queued for ${patient.name}. Patient will receive a check-in from their provider character avatar.`
-                      )
+                      setToast(`Care message queued for ${patient.name}. Patient will receive a check-in notification.`)
                     }
                     onBHW={() => setBhwPatient(patient)}
                     onDOT={() => setDotPatient(patient)}
