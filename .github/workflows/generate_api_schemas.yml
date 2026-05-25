@@ -25,7 +25,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install django-ninja==1.6.2 Django==5.2.14
+        run: pip install -r requirements.txt
 
       - name: install quicktype
         run: npm install -g quicktype
