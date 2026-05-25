@@ -30,7 +30,7 @@ jobs:
       - name: install quicktype
         run: npm install -g quicktype
 
-      - name: Generate JSON Schema
+      - name: Generate and export API Schemas
         run: python export_schemas.py
 
       - name: Commit and Push
