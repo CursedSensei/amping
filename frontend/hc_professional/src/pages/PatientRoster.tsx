@@ -35,40 +35,40 @@ function PatientCard({ patient }: { patient: Patient }) {
 
   return (
     <div
-      className="bg-white rounded-xl border border-gray-100 p-5 cursor-pointer hover:shadow-md hover:border-blue-200 transition-all group"
+      className="bg-white rounded-xl border border-gray-100 p-6 cursor-pointer hover:shadow-lg hover:border-blue-300 transition-all group"
       onClick={() => navigate(`/patient/${patient.id}`)}
     >
       {/* Header row */}
-      <div className="flex items-start justify-between mb-3">
+      <div className="flex items-start justify-between mb-4">
         <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <h3 className="font-semibold text-gray-900 text-base group-hover:text-blue-700 transition-colors">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="font-bold text-gray-900 text-lg group-hover:text-blue-700 transition-colors">
               {patient.name}
             </h3>
             {patient.riskTier !== 'safe' && (
               <AlertCircle size={14} className="text-orange-400" />
             )}
           </div>
-          <p className="text-xs text-gray-400">
+          <p className="text-sm text-gray-500 font-medium">
             {patient.age} Yrs · {patient.ageProfile} Profile
           </p>
         </div>
         <div className="flex items-center gap-2">
           <RiskBadge tier={patient.riskTier} month3Protected={patient.month3Protected} />
-          <ChevronRight size={16} className="text-gray-300 group-hover:text-blue-400 transition-colors" />
+          <ChevronRight size={18} className="text-gray-300 group-hover:text-blue-500 transition-colors" />
         </div>
       </div>
 
       {/* Sync & symptom */}
-      <div className="flex items-center gap-3 mb-4">
-        <div className="flex items-center gap-1.5 text-[11px] text-gray-400">
-          <Wifi size={11} />
+      <div className="flex items-center gap-4 mb-5">
+        <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium">
+          <Wifi size={12} />
           Sync: {patient.lastSyncLabel}
         </div>
-        {patient.symptomReported && (
-          <div className="flex items-center gap-1.5 text-[11px] text-amber-600 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full">
-            <AlertCircle size={10} />
-            {patient.symptomReported}
+        {patient.symptomReported && patient.symptomReported.length > 0 && (
+          <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full font-medium">
+            <AlertCircle size={12} />
+            {patient.symptomReported.join(', ')}
           </div>
         )}
       </div>
@@ -122,14 +122,15 @@ export default function PatientRoster({ onLogout }: { onLogout?: () => void }) {
   });
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
       <Sidebar
         onSearch={setSearch}
         onFilter={setFilter}
         activeFilter={filter}
+        onLogout={onLogout}
       />
 
-      <main className="flex-1 p-8 overflow-y-auto">
+      <main className="flex-1 p-8 overflow-y-auto h-full">
         {/* Page header */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -137,21 +138,6 @@ export default function PatientRoster({ onLogout }: { onLogout?: () => void }) {
             <p className="text-sm text-gray-400 mt-0.5">
               {filtered.length} patient{filtered.length !== 1 ? 's' : ''} shown
             </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigate('/risk')}
-              className="flex items-center gap-2 bg-white border border-gray-200 text-gray-600 text-sm px-4 py-2 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors"
-            >
-              Risk Center
-            </button>
-            <button
-              onClick={onLogout}
-              className="flex items-center gap-2 bg-white border border-gray-200 text-gray-600 text-sm px-4 py-2 rounded-lg hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors"
-            >
-              <LogOut size={14} />
-              Sign Out
-            </button>
           </div>
         </div>
 

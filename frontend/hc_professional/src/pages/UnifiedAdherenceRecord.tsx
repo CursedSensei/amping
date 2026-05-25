@@ -67,6 +67,7 @@ const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 /** Returns an array of HeatmapDay with leading null-date padding so the
  *  first real day lands on the correct column (0=Mon … 6=Sun). */
 function buildGridCells(days: HeatmapDay[], startDay: number): (HeatmapDay | null)[] {
+  if (days.length > 0 && days[0].date === null) return days;
   const padding: null[] = Array(startDay).fill(null);
   return [...padding, ...days];
 }
@@ -156,9 +157,9 @@ const PRESET_SYMPTOMS = [
   'Fever', 'Chills', 'Dark urine', 'Tingling / Numbness', 'Loss of appetite',
 ];
 
-function SymptomsPanel({ initial }: { initial?: string }) {
+function SymptomsPanel({ initial }: { initial?: string[] }) {
   const [items, setItems] = useState<string[]>(() => {
-    const base: string[] = initial ? [initial] : [];
+    const base: string[] = initial ? [...initial] : [];
     return base;
   });
   const [input, setInput] = useState('');
@@ -272,6 +273,18 @@ export default function UnifiedAdherenceRecord() {
 
   const [selectedDay, setSelectedDay] = useState<HeatmapDay | null>(null);
 
+  const [currentDate, setCurrentDate] = useState<Date>(() => {
+    return patient ? new Date(`${patient.heatmapMonth} 1`) : new Date();
+  });
+
+  const handlePrevMonth = () => {
+    setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  };
+
   const handlePrint = useReactToPrint({
     contentRef: printRef,
     documentTitle: patient ? `UAR_${patient.patientId}` : 'UnifiedAdherenceRecord',
@@ -282,12 +295,68 @@ export default function UnifiedAdherenceRecord() {
   const isOnTrack = patient.monthPDC >= patient.pdcTarget;
 
   // Build padded calendar grid
-  const gridCells = buildGridCells(patient.heatmapDays, patient.heatmapStartDay);
+  const targetMonthStr = currentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase();
+  const patientMonthStr = patient.heatmapMonth.toUpperCase();
+  const isPatientMonth = targetMonthStr === patientMonthStr;
+
+  let gridCells: (HeatmapDay | null)[] = [];
+  let displayMonthStr = targetMonthStr;
+
+  if (isPatientMonth) {
+    gridCells = buildGridCells(patient.heatmapDays, patient.heatmapStartDay);
+    displayMonthStr = patient.heatmapMonth;
+    
+    let firstComplyingIdx = -1;
+    for (let i = 0; i < gridCells.length; i++) {
+      const cell = gridCells[i];
+      if (cell && (cell.status === 'app-recorded' || cell.status === 'provider-reconciled')) {
+        firstComplyingIdx = i;
+        break;
+      }
+    }
+    if (firstComplyingIdx !== -1) {
+      for (let i = 0; i < firstComplyingIdx; i++) {
+        const cell = gridCells[i];
+        if (cell && cell.status === 'unverified-absence') {
+          gridCells[i] = { ...cell, status: 'future' };
+        }
+      }
+    } else {
+      for (let i = 0; i < gridCells.length; i++) {
+        const cell = gridCells[i];
+        if (cell && cell.status === 'unverified-absence') {
+          gridCells[i] = { ...cell, status: 'future' };
+        }
+      }
+    }
+  } else {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    let startDay = new Date(year, month, 1).getDay() - 1;
+    if (startDay === -1) startDay = 6;
+
+    const dummyDays: HeatmapDay[] = [];
+    const now = new Date();
+    for (let i = 1; i <= daysInMonth; i++) {
+      const cellDate = new Date(year, month, i);
+      let status: DayStatus = 'future';
+      if (cellDate < now) {
+         status = 'unverified-absence';
+      }
+      dummyDays.push({
+        date: i,
+        status: status,
+      });
+    }
+    gridCells = buildGridCells(dummyDays, startDay);
+    displayMonthStr = targetMonthStr;
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50" style={{ animation: 'fadein 0.18s ease' }}>
+    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden" style={{ animation: 'fadein 0.18s ease' }}>
       {/* Top bar */}
-      <div className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between sticky top-0 z-20 print:hidden">
+      <div className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between shrink-0 print:hidden">
         <button
           onClick={() => navigate('/')}
           className="flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors"
@@ -304,9 +373,11 @@ export default function UnifiedAdherenceRecord() {
         </button>
       </div>
 
-      {/* Printable area */}
-      <div ref={printRef} className="max-w-6xl mx-auto p-8">
-        {/* Page title */}
+      {/* Scrollable area */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Printable area */}
+        <div ref={printRef} className="max-w-6xl mx-auto p-8">
+          {/* Page title */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Unified Adherence Record</h1>
           <p className="text-sm text-gray-400 mt-0.5">Monthly Progress Report & Audit Trail</p>
@@ -367,11 +438,11 @@ export default function UnifiedAdherenceRecord() {
               <div className="flex items-center justify-between mb-6">
                 {/* Month nav */}
                 <div className="flex items-center gap-3">
-                  <button className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors">
+                  <button onClick={handlePrevMonth} className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors">
                     <ChevronLeft size={14} className="text-gray-500" />
                   </button>
-                  <span className="text-sm font-semibold text-gray-700">{patient.heatmapMonth}</span>
-                  <button className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors">
+                  <span className="text-sm font-semibold text-gray-700">{displayMonthStr}</span>
+                  <button onClick={handleNextMonth} className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors">
                     <ChevronRight size={14} className="text-gray-500" />
                   </button>
                 </div>
@@ -576,6 +647,7 @@ export default function UnifiedAdherenceRecord() {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

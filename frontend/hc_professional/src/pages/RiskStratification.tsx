@@ -432,14 +432,14 @@ export default function RiskStratification() {
   );
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
       <Sidebar />
 
       {toast && <Toast message={toast} onDismiss={() => setToast('')} />}
       {bhwPatient && <BHWModal patient={bhwPatient} onClose={() => setBhwPatient(null)} />}
       {dotPatient && <DOTModal patient={dotPatient} onClose={() => setDotPatient(null)} />}
 
-      <main className="flex-1 p-8 overflow-y-auto">
+      <main className="flex-1 p-8 overflow-y-auto h-full">
         <div className="mb-6">
           <button onClick={() => navigate('/')} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-blue-600 mb-2 transition-colors">
             <ArrowLeft size={14} />
@@ -473,15 +473,37 @@ export default function RiskStratification() {
         </div>
 
         {/* Tier legend */}
-        <div className="bg-white border border-gray-100 rounded-xl p-4 mb-6">
-          <p className="text-[11px] uppercase tracking-wider text-gray-400 mb-3 font-semibold">Escalation Tier System</p>
-          <div className="flex flex-wrap gap-4 text-xs font-medium">
-            {(Object.entries(TIER_CONFIG) as [RiskTier, typeof TIER_CONFIG[RiskTier]][]).map(([, cfg]) => (
-              <div key={cfg.label} className="flex items-center gap-1.5">
-                <span className={`w-2.5 h-2.5 rounded-full ${cfg.dotColor}`} />
-                <span className="text-gray-600">{cfg.label}</span>
-              </div>
-            ))}
+        <div className="bg-white border border-gray-100 rounded-xl overflow-hidden mb-6">
+          <p className="text-[11px] uppercase tracking-wider text-gray-400 bg-gray-50 px-5 py-3 border-b border-gray-100 font-semibold">
+            Escalation Tier System
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-gray-600">
+              <thead className="bg-gray-50 border-b border-gray-100 text-[10px]">
+                <tr>
+                  <th className="px-5 py-2.5 font-semibold text-gray-400 uppercase tracking-wider">Tier Level</th>
+                  <th className="px-5 py-2.5 font-semibold text-gray-400 uppercase tracking-wider">Required Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {(Object.entries(TIER_CONFIG) as [RiskTier, typeof TIER_CONFIG[RiskTier]][]).map(([, cfg]) => {
+                  const parts = cfg.label.split(' — ');
+                  const level = parts[0];
+                  const response = parts.slice(1).join(' — ') || 'No action required';
+                  return (
+                    <tr key={cfg.label} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-5 py-3 w-1/2">
+                        <div className="flex items-center gap-2.5">
+                          <span className={`w-2 h-2 rounded-full ${cfg.dotColor} shrink-0`} />
+                          <span className="font-semibold text-gray-800">{level}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 text-gray-500 w-1/2">{response}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
 
