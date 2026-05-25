@@ -9,9 +9,10 @@ interface SidebarProps {
   onSearch?: (q: string) => void;
   onFilter?: (f: RiskFilter) => void;
   activeFilter?: RiskFilter;
+  onLogout?: () => void;
 }
 
-export default function Sidebar({ onSearch, onFilter, activeFilter = 'all' }: SidebarProps) {
+export default function Sidebar({ onSearch, onFilter, activeFilter = 'all', onLogout }: SidebarProps) {
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
@@ -120,7 +121,7 @@ export default function Sidebar({ onSearch, onFilter, activeFilter = 'all' }: Si
             <p className="text-white text-xs font-medium truncate">Dr. Alicia Tan</p>
             <p className="text-[11px] text-gray-500 truncate">Lapu-Lapu City HO</p>
           </div>
-          <LogOut size={14} className="shrink-0 cursor-pointer hover:text-white transition-colors" />
+          <LogOut size={14} className="shrink-0 cursor-pointer hover:text-white transition-colors" onClick={onLogout} />
         </div>
       </div>
     </aside>

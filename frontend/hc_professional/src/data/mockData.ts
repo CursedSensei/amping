@@ -57,7 +57,7 @@ export interface Patient {
   lastActive: string;
   triggerReason: string;
   lastSyncLabel: string;
-  symptomReported?: string;
+  symptomReported?: string[];
   weeklyCompliance: WeekDay[];
   anomalousEntries: AnomalousEntry[];
   penaltyHistory: PenaltyEvent[];
@@ -92,7 +92,7 @@ export const MOCK_PATIENTS: Patient[] = [
     lastActive: '4 days ago',
     triggerReason: '3 unverified misses in 7 days; quota exhausted',
     lastSyncLabel: '1 day ago',
-    symptomReported: 'Dizziness reported',
+    symptomReported: ['Dizziness reported'],
     month3Protected: true,
     weeklyCompliance: [
       { day: 'Mon', status: 'done' },
@@ -155,7 +155,7 @@ export const MOCK_PATIENTS: Patient[] = [
     lastActive: '2 days ago',
     triggerReason: '2 unverified misses in past 7 days',
     lastSyncLabel: '2 hours ago',
-    symptomReported: 'Mild stomach pain reported',
+    symptomReported: ['Mild stomach pain reported'],
     month3Protected: true,
     weeklyCompliance: [
       { day: 'Mon', status: 'done' },
