@@ -104,7 +104,7 @@ function PatientCard({ patient }: { patient: Patient }) {
   );
 }
 
-export default function PatientRoster() {
+export default function PatientRoster({ onLogout }: { onLogout?: () => void }) {
   const [filter, setFilter] = useState<RiskFilter>('all');
   const [search, setSearch] = useState('');
   const navigate = useNavigate();
@@ -138,13 +138,21 @@ export default function PatientRoster() {
               {filtered.length} patient{filtered.length !== 1 ? 's' : ''} shown
             </p>
           </div>
-          <button
-            onClick={() => navigate('/risk')}
-            className="flex items-center gap-2 bg-white border border-gray-200 text-gray-600 text-sm px-4 py-2 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors"
-          >
-            <LogOut size={14} />
-            Risk Center
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/risk')}
+              className="flex items-center gap-2 bg-white border border-gray-200 text-gray-600 text-sm px-4 py-2 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors"
+            >
+              Risk Center
+            </button>
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-2 bg-white border border-gray-200 text-gray-600 text-sm px-4 py-2 rounded-lg hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors"
+            >
+              <LogOut size={14} />
+              Sign Out
+            </button>
+          </div>
         </div>
 
         {/* Cards grid */}
