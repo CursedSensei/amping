@@ -3,7 +3,7 @@
 // val json                       = Json { allowStructuredMapKeys = true }
 // val loginHealthProviderPayload = json.parse(LoginHealthProviderPayload.serializer(), jsonString)
 
-package quicktype
+package com.pinghtdog.amping.api_schemas
 
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*

@@ -3,7 +3,7 @@
 // val json         = Json { allowStructuredMapKeys = true }
 // val baseResponse = json.parse(BaseResponse.serializer(), jsonString)
 
-package quicktype
+package com.pinghtdog.amping.api_schemas
 
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*

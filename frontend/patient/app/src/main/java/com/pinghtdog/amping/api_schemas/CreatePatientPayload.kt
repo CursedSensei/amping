@@ -3,7 +3,7 @@
 // val json                 = Json { allowStructuredMapKeys = true }
 // val createPatientPayload = json.parse(CreatePatientPayload.serializer(), jsonString)
 
-package quicktype
+package com.pinghtdog.amping.api_schemas
 
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*
