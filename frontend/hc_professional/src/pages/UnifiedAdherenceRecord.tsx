@@ -1,8 +1,7 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
-  Share2,
   Download,
   ChevronLeft,
   ChevronRight,
@@ -10,6 +9,9 @@ import {
   ShieldCheck,
   Info,
   X,
+  Plus,
+  AlertCircle,
+  Thermometer,
 } from 'lucide-react';
 import {
   LineChart,
@@ -20,71 +22,84 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
+import { useReactToPrint } from 'react-to-print';
 import { MOCK_PATIENTS, type DayStatus, type HeatmapDay } from '../data/mockData';
 import HeartQuota from '../components/HeartQuota';
 
-// ─── Heatmap constants ─────────────────────────────────────────────────────
+// ─── Heatmap status maps ───────────────────────────────────────────────────
 
 const STATUS_STYLE: Record<DayStatus, string> = {
-  'app-recorded': 'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95',
+  'app-recorded':        'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95',
   'provider-reconciled': 'bg-emerald-700 text-white hover:bg-emerald-800 active:scale-95',
-  'technical-miss': 'bg-yellow-400 text-yellow-900 hover:bg-yellow-500 active:scale-95',
-  'unverified-absence': 'bg-red-500 text-white hover:bg-red-600 active:scale-95',
-  future: 'bg-gray-100 text-gray-300 cursor-default opacity-50',
+  'technical-miss':      'bg-yellow-400 text-yellow-900 hover:bg-yellow-500 active:scale-95',
+  'unverified-absence':  'bg-red-500 text-white hover:bg-red-600 active:scale-95',
+  future:                'bg-gray-100 text-gray-300 cursor-default opacity-50',
 };
 
 const STATUS_LABEL: Record<DayStatus, string> = {
-  'app-recorded': 'App-Recorded',
+  'app-recorded':        'App-Recorded',
   'provider-reconciled': 'Provider-Reconciled',
-  'technical-miss': 'Technical Miss',
-  'unverified-absence': 'Unverified Absence',
-  future: 'Future',
+  'technical-miss':      'Technical Miss',
+  'unverified-absence':  'Unverified Absence',
+  future:                'Future',
 };
 
 const STATUS_BG: Record<DayStatus, string> = {
-  'app-recorded': 'bg-emerald-50 border-emerald-200',
+  'app-recorded':        'bg-emerald-50 border-emerald-200',
   'provider-reconciled': 'bg-emerald-50 border-emerald-200',
-  'technical-miss': 'bg-yellow-50 border-yellow-200',
-  'unverified-absence': 'bg-red-50 border-red-200',
-  future: 'bg-gray-50 border-gray-200',
+  'technical-miss':      'bg-yellow-50 border-yellow-200',
+  'unverified-absence':  'bg-red-50 border-red-200',
+  future:                'bg-gray-50 border-gray-200',
 };
 
 const STATUS_TEXT: Record<DayStatus, string> = {
-  'app-recorded': 'text-emerald-700',
+  'app-recorded':        'text-emerald-700',
   'provider-reconciled': 'text-emerald-800',
-  'technical-miss': 'text-yellow-800',
-  'unverified-absence': 'text-red-700',
-  future: 'text-gray-400',
+  'technical-miss':      'text-yellow-800',
+  'unverified-absence':  'text-red-700',
+  future:                'text-gray-400',
 };
 
-// ─── Heatmap Cell ──────────────────────────────────────────────────────────
+// ─── Day-of-week helpers ───────────────────────────────────────────────────
 
-function HeatmapCell({
-  day,
+const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/** Returns an array of HeatmapDay with leading null-date padding so the
+ *  first real day lands on the correct column (0=Mon … 6=Sun). */
+function buildGridCells(days: HeatmapDay[], startDay: number): (HeatmapDay | null)[] {
+  const padding: null[] = Array(startDay).fill(null);
+  return [...padding, ...days];
+}
+
+// ─── Calendar Cell ─────────────────────────────────────────────────────────
+
+function CalCell({
+  cell,
   selected,
   onClick,
 }: {
-  day: HeatmapDay;
+  cell: HeatmapDay | null;
   selected: boolean;
   onClick: (d: HeatmapDay) => void;
 }) {
-  if (day.date === null) return <div />;
-  if (day.status === 'future') {
+  if (cell === null) return <div />;
+  if (cell.date === null) return <div />;
+
+  if (cell.status === 'future') {
     return (
       <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-semibold ${STATUS_STYLE.future}`}>
-        {day.date}
+        {cell.date}
       </div>
     );
   }
 
   return (
     <button
-      onClick={() => onClick(day)}
-      className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-semibold transition-all select-none ring-offset-1 ${
-        STATUS_STYLE[day.status]
-      } ${selected ? 'ring-2 ring-gray-900 scale-110 shadow-lg' : ''}`}
+      onClick={() => onClick(cell)}
+      aria-label={`Day ${cell.date}: ${STATUS_LABEL[cell.status]}`}
+      className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-semibold transition-all select-none ring-offset-1 ${STATUS_STYLE[cell.status]} ${selected ? 'ring-2 ring-gray-900 scale-110 shadow-lg' : ''}`}
     >
-      {day.date}
+      {cell.date}
     </button>
   );
 }
@@ -92,10 +107,10 @@ function HeatmapCell({
 // ─── Day Detail Panel ──────────────────────────────────────────────────────
 
 function DayDetailPanel({ day, month, onClose }: { day: HeatmapDay; month: string; onClose: () => void }) {
+  const [mo, yr] = month.split(' ');
   return (
-    <div
-      className={`border rounded-xl p-4 ${STATUS_BG[day.status]} flex items-start gap-3 animate-in fade-in slide-in-from-top-1 duration-150`}
-    >
+    <div className={`border rounded-xl p-4 ${STATUS_BG[day.status]} flex items-start gap-3`}
+      style={{ animation: 'fadein 0.15s ease' }}>
       <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${STATUS_STYLE[day.status].split(' ')[0]} text-white shrink-0`}>
         {day.date}
       </div>
@@ -104,24 +119,20 @@ function DayDetailPanel({ day, month, onClose }: { day: HeatmapDay; month: strin
           <span className={`text-xs font-bold uppercase tracking-wider ${STATUS_TEXT[day.status]}`}>
             {STATUS_LABEL[day.status]}
           </span>
-          <span className="text-[11px] text-gray-400">{month.split(' ')[0]} {day.date}, {month.split(' ')[1]}</span>
+          <span className="text-[11px] text-gray-400">{mo} {day.date}, {yr}</span>
         </div>
         <p className={`text-[12px] leading-relaxed ${STATUS_TEXT[day.status]} opacity-80`}>
           {day.note ?? 'Video dose log submitted via Gabby and verified by upload.'}
         </p>
       </div>
-      <button
-        onClick={onClose}
-        className="text-gray-400 hover:text-gray-600 transition-colors shrink-0 mt-0.5"
-      >
+      <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors shrink-0 mt-0.5">
         <X size={14} />
       </button>
     </div>
   );
 }
 
-
-// ─── Custom Recharts Tooltip ───────────────────────────────────────────────
+// ─── Recharts Tooltip ──────────────────────────────────────────────────────
 
 function CustomTooltip({ active, payload, label }: {
   active?: boolean;
@@ -137,23 +148,146 @@ function CustomTooltip({ active, payload, label }: {
   );
 }
 
+// ─── Symptoms / Side-effects panel ─────────────────────────────────────────
+
+const PRESET_SYMPTOMS = [
+  'Dizziness', 'Nausea', 'Vomiting', 'Headache', 'Fatigue',
+  'Stomach pain', 'Skin rash', 'Joint pain', 'Vision changes', 'Jaundice',
+  'Fever', 'Chills', 'Dark urine', 'Tingling / Numbness', 'Loss of appetite',
+];
+
+function SymptomsPanel({ initial }: { initial?: string }) {
+  const [items, setItems] = useState<string[]>(() => {
+    const base: string[] = initial ? [initial] : [];
+    return base;
+  });
+  const [input, setInput] = useState('');
+  const [showPresets, setShowPresets] = useState(false);
+
+  const add = (s: string) => {
+    const trimmed = s.trim();
+    if (!trimmed || items.includes(trimmed)) return;
+    setItems((prev) => [...prev, trimmed]);
+    setInput('');
+    setShowPresets(false);
+  };
+
+  const remove = (s: string) => setItems((prev) => prev.filter((x) => x !== s));
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl p-5">
+      <div className="flex items-center gap-2 mb-3">
+        <Thermometer size={14} className="text-rose-500" />
+        <h3 className="font-semibold text-gray-900 text-sm">Side Effects / Symptoms</h3>
+      </div>
+
+      {/* Current items */}
+      {items.length === 0 ? (
+        <p className="text-[12px] text-gray-400 mb-3 italic">No symptoms logged.</p>
+      ) : (
+        <div className="flex flex-wrap gap-2 mb-3">
+          {items.map((s) => (
+            <span
+              key={s}
+              className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-semibold px-2.5 py-1 rounded-full"
+            >
+              {s}
+              <button
+                onClick={() => remove(s)}
+                className="text-rose-400 hover:text-rose-700 transition-colors"
+                aria-label={`Remove ${s}`}
+              >
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Add input */}
+      <div className="flex gap-2 mb-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add(input)}
+          onFocus={() => setShowPresets(true)}
+          placeholder="Type a symptom and press Enter…"
+          className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-transparent transition"
+        />
+        <button
+          onClick={() => add(input)}
+          className="flex items-center gap-1 bg-rose-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-rose-600 transition-colors"
+        >
+          <Plus size={12} />
+          Add
+        </button>
+      </div>
+
+      {/* Preset suggestions */}
+      {showPresets && (
+        <div className="border border-gray-100 rounded-lg p-2 bg-gray-50">
+          <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold mb-1.5 px-1">
+            Common symptoms — click to add
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {PRESET_SYMPTOMS.filter((ps) => !items.includes(ps)).map((ps) => (
+              <button
+                key={ps}
+                onClick={() => add(ps)}
+                className="text-[11px] px-2 py-0.5 rounded-full border border-gray-200 bg-white text-gray-600 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-700 transition-colors"
+              >
+                {ps}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowPresets(false)}
+            className="text-[10px] text-gray-400 mt-2 hover:text-gray-600 transition-colors"
+          >
+            Close suggestions
+          </button>
+        </div>
+      )}
+
+      {items.length > 0 && (
+        <div className="flex items-start gap-1.5 mt-3 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+          <AlertCircle size={12} className="text-amber-500 mt-0.5 shrink-0" />
+          <p className="text-[11px] text-amber-700">
+            Reported symptoms are visible to the assigned provider and BHW. Patient will be notified.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────
 
 export default function UnifiedAdherenceRecord() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const patient = MOCK_PATIENTS.find((p) => p.id === id);
+  const printRef = useRef<HTMLDivElement>(null);
 
   const [selectedDay, setSelectedDay] = useState<HeatmapDay | null>(null);
+
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: patient ? `UAR_${patient.patientId}` : 'UnifiedAdherenceRecord',
+  });
 
   if (!patient) return <div className="p-8 text-gray-500">Patient not found.</div>;
 
   const isOnTrack = patient.monthPDC >= patient.pdcTarget;
 
+  // Build padded calendar grid
+  const gridCells = buildGridCells(patient.heatmapDays, patient.heatmapStartDay);
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" style={{ animation: 'fadein 0.18s ease' }}>
       {/* Top bar */}
-      <div className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between sticky top-0 z-20">
+      <div className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between sticky top-0 z-20 print:hidden">
         <button
           onClick={() => navigate('/')}
           className="flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors"
@@ -161,19 +295,17 @@ export default function UnifiedAdherenceRecord() {
           <ArrowLeft size={16} />
           Back to Roster
         </button>
-        <div className="flex items-center gap-2">
-          <button className="flex items-center gap-1.5 border border-gray-200 text-gray-600 text-sm px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors">
-            <Share2 size={13} />
-            Share with Nurse
-          </button>
-          <button className="flex items-center gap-1.5 bg-gray-900 text-white text-sm px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">
-            <Download size={13} />
-            Export PDF
-          </button>
-        </div>
+        <button
+          onClick={() => handlePrint()}
+          className="flex items-center gap-1.5 bg-gray-900 text-white text-sm px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors"
+        >
+          <Download size={13} />
+          Export PDF
+        </button>
       </div>
 
-      <div className="max-w-6xl mx-auto p-8">
+      {/* Printable area */}
+      <div ref={printRef} className="max-w-6xl mx-auto p-8">
         {/* Page title */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Unified Adherence Record</h1>
@@ -227,10 +359,11 @@ export default function UnifiedAdherenceRecord() {
 
         {/* Body: two columns */}
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-6">
-          {/* LEFT: Heatmap + PDC */}
+          {/* LEFT: Calendar heatmap + PDC trend */}
           <div className="space-y-6">
-            {/* Month & PDC header */}
+            {/* Calendar card */}
             <div className="bg-white border border-gray-100 rounded-xl p-6">
+              {/* Header row */}
               <div className="flex items-center justify-between mb-6">
                 {/* Month nav */}
                 <div className="flex items-center gap-3">
@@ -243,27 +376,17 @@ export default function UnifiedAdherenceRecord() {
                   </button>
                 </div>
 
-                {/* PDC */}
+                {/* PDC badge */}
                 <div className="flex items-center gap-4">
                   <div className="text-right">
-                    <div className="flex items-end gap-1">
-                      <span className="text-4xl font-bold text-gray-900">{patient.monthPDC}%</span>
-                    </div>
+                    <span className="text-4xl font-bold text-gray-900">{patient.monthPDC}%</span>
                     <p className="text-[11px] text-gray-400 uppercase tracking-wider">
                       Proportion of Days Covered
                     </p>
                   </div>
                   <div className="flex flex-col gap-1 items-end">
-                    <span className="text-[11px] text-gray-400">
-                      Target ≥{patient.pdcTarget}%
-                    </span>
-                    <span
-                      className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
-                        isOnTrack
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}
-                    >
+                    <span className="text-[11px] text-gray-400">Target ≥{patient.pdcTarget}%</span>
+                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${isOnTrack ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                       {isOnTrack ? '✓ ON TRACK' : '⚠ BELOW TARGET'}
                     </span>
                   </div>
@@ -278,29 +401,31 @@ export default function UnifiedAdherenceRecord() {
                 </div>
               )}
 
-              {/* Day-of-week labels */}
+              {/* Day-of-week header */}
               <div className="grid grid-cols-7 gap-2 mb-2">
-                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
-                  <div key={d} className="text-[11px] text-gray-400 font-medium text-center">
-                    {d}
-                  </div>
+                {DOW_LABELS.map((d) => (
+                  <div key={d} className="text-[11px] text-gray-400 font-medium text-center">{d}</div>
                 ))}
               </div>
 
-              {/* Heatmap grid */}
+              {/* Calendar grid — padded so days land on correct columns */}
               <div className="grid grid-cols-7 gap-2">
-                {patient.heatmapDays.map((day, i) => (
-                  <div key={i} className="flex items-center justify-center">
-                    <HeatmapCell
-                      day={day}
-                      selected={selectedDay === day}
-                      onClick={(d) => setSelectedDay((prev) => (prev === d ? null : d))}
-                    />
-                  </div>
-                ))}
+                {gridCells.map((cell, i) =>
+                  cell === null ? (
+                    <div key={`pad-${i}`} />
+                  ) : (
+                    <div key={`${cell.date}-${i}`} className="flex items-center justify-center">
+                      <CalCell
+                        cell={cell}
+                        selected={selectedDay === cell}
+                        onClick={(d) => setSelectedDay((prev) => (prev === d ? null : d))}
+                      />
+                    </div>
+                  )
+                )}
               </div>
 
-              {/* Day detail panel — appears below the grid on click */}
+              {/* Day detail panel */}
               {selectedDay && selectedDay.status !== 'future' && (
                 <div className="mt-4">
                   <DayDetailPanel
@@ -313,16 +438,14 @@ export default function UnifiedAdherenceRecord() {
 
               {/* Legend */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 pt-5 border-t border-gray-100">
-                {[
-                  { status: 'app-recorded' as DayStatus, count: 17, title: 'App-Recorded', desc: 'Video dose logs submitted via Gabby and verified by upload.' },
-                  { status: 'provider-reconciled' as DayStatus, count: 8, title: 'Provider-Reconciled', desc: 'Provider or BHW manually verified; dose counted in PDC. Penalty reversed.' },
-                  { status: 'technical-miss' as DayStatus, count: 1, title: 'Technical Miss', desc: 'App crash or connectivity failure detected. No penalty applied. Gate 0: T-type.' },
-                  { status: 'unverified-absence' as DayStatus, count: 2, title: 'Unverified Absence', desc: 'No dose record, no reconciliation. Gate 0: U-type. Penalty applied.' },
-                ].map((leg) => (
+                {([
+                  { status: 'app-recorded'        as DayStatus, title: 'App-Recorded',        desc: 'Video dose logs submitted via Gabby and verified by upload.' },
+                  { status: 'provider-reconciled' as DayStatus, title: 'Provider-Reconciled', desc: 'Provider or BHW manually verified; dose counted in PDC. Penalty reversed.' },
+                  { status: 'technical-miss'      as DayStatus, title: 'Technical Miss',       desc: 'App crash or connectivity failure detected. No penalty applied.' },
+                  { status: 'unverified-absence'  as DayStatus, title: 'Unverified Absence',   desc: 'No dose record, no reconciliation. Penalty applied.' },
+                ]).map((leg) => (
                   <div key={leg.status} className="flex gap-2">
-                    <div className={`w-7 h-7 rounded-lg shrink-0 ${STATUS_STYLE[leg.status].split(' ')[0]} flex items-center justify-center text-white text-[11px] font-bold`}>
-                      {leg.count}
-                    </div>
+                    <div className={`w-5 h-5 rounded-md shrink-0 ${STATUS_STYLE[leg.status].split(' ')[0]} mt-0.5`} />
                     <div>
                       <p className="text-[11px] font-semibold text-gray-800 uppercase tracking-wide">{leg.title}</p>
                       <p className="text-[10px] text-gray-400 leading-relaxed">{leg.desc}</p>
@@ -338,19 +461,8 @@ export default function UnifiedAdherenceRecord() {
               <p className="text-xs text-gray-400 mb-4">Proportion of Days Covered by week</p>
               <ResponsiveContainer width="100%" height={160}>
                 <LineChart data={patient.pdcTrend} margin={{ top: 8, right: 16, left: -16, bottom: 0 }}>
-                  <XAxis
-                    dataKey="week"
-                    tick={{ fontSize: 11, fill: '#9ca3af' }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    domain={[0, 100]}
-                    tick={{ fontSize: 11, fill: '#9ca3af' }}
-                    axisLine={false}
-                    tickLine={false}
-                    tickFormatter={(v) => `${v}%`}
-                  />
+                  <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
                   <Tooltip content={<CustomTooltip />} />
                   <ReferenceLine
                     y={patient.pdcTarget}
@@ -358,14 +470,7 @@ export default function UnifiedAdherenceRecord() {
                     strokeDasharray="4 4"
                     label={{ value: `Target ${patient.pdcTarget}%`, fill: '#f59e0b', fontSize: 10, position: 'right' }}
                   />
-                  <Line
-                    type="monotone"
-                    dataKey="pdc"
-                    stroke="#3b82f6"
-                    strokeWidth={2.5}
-                    dot={{ fill: '#3b82f6', r: 4 }}
-                    activeDot={{ r: 6, fill: '#1d4ed8' }}
-                  />
+                  <Line type="monotone" dataKey="pdc" stroke="#3b82f6" strokeWidth={2.5} dot={{ fill: '#3b82f6', r: 4 }} activeDot={{ r: 6, fill: '#1d4ed8' }} />
                 </LineChart>
               </ResponsiveContainer>
               <div className="flex items-center gap-4 mt-3 text-[11px]">
@@ -384,7 +489,7 @@ export default function UnifiedAdherenceRecord() {
             {patient.anomalousEntries.length > 0 && (
               <button
                 onClick={() => navigate(`/patient/${id}/reconcile`)}
-                className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white text-sm font-semibold py-3 rounded-xl hover:bg-blue-700 transition-colors"
+                className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white text-sm font-semibold py-3 rounded-xl hover:bg-blue-700 transition-colors print:hidden"
               >
                 <ShieldCheck size={15} />
                 Reconcile Anomalous Entries ({patient.anomalousEntries.length})
@@ -392,8 +497,9 @@ export default function UnifiedAdherenceRecord() {
             )}
           </div>
 
-          {/* RIGHT: Gamification State */}
+          {/* RIGHT: Gamification state + symptoms */}
           <div className="space-y-4">
+            {/* Gamification card */}
             <div className="bg-white border border-gray-100 rounded-xl p-5">
               <h3 className="font-semibold text-gray-900 mb-4 text-sm">Gamification State</h3>
 
@@ -427,13 +533,7 @@ export default function UnifiedAdherenceRecord() {
                   <div className="space-y-2">
                     {patient.penaltyHistory.map((ev, i) => (
                       <div key={i} className="flex items-center gap-2">
-                        <span
-                          className={`text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center ${
-                            ev.tier === 1
-                              ? 'bg-yellow-100 text-yellow-700'
-                              : 'bg-orange-100 text-orange-700'
-                          }`}
-                        >
+                        <span className={`text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center ${ev.tier === 1 ? 'bg-yellow-100 text-yellow-700' : 'bg-orange-100 text-orange-700'}`}>
                           T{ev.tier}
                         </span>
                         <div>
@@ -446,6 +546,9 @@ export default function UnifiedAdherenceRecord() {
                 </div>
               )}
             </div>
+
+            {/* Symptoms panel */}
+            <SymptomsPanel initial={patient.symptomReported} />
 
             {/* Month 3 protection card */}
             {patient.month3Protected && (
