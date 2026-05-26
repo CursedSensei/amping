@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Search, Shield, Users, AlertTriangle, LogOut } from 'lucide-react';
-import { MOCK_PATIENTS } from '../data/mockData';
+import { usePatients } from '../hooks/usePatients';
 
 type RiskFilter = 'all' | 'high' | 'low';
 
@@ -16,6 +16,7 @@ export default function Sidebar({ onSearch, onFilter, activeFilter = 'all', onLo
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
+  const { patients } = usePatients();
 
   const handleSearch = (val: string) => {
     setQuery(val);
@@ -25,7 +26,7 @@ export default function Sidebar({ onSearch, onFilter, activeFilter = 'all', onLo
   const isRoster = location.pathname === '/';
   const isRisk = location.pathname === '/risk';
 
-  const highRiskCount = MOCK_PATIENTS.filter(
+  const highRiskCount = patients.filter(
     (p) => p.riskTier === 'tier2' || p.riskTier === 'tier3'
   ).length;
 
@@ -57,7 +58,7 @@ export default function Sidebar({ onSearch, onFilter, activeFilter = 'all', onLo
           <Users size={15} />
           Patient Roster
           <span className="ml-auto text-[11px] bg-white/10 px-1.5 py-0.5 rounded-full">
-            {MOCK_PATIENTS.length}
+            {patients.length}
           </span>
         </button>
 

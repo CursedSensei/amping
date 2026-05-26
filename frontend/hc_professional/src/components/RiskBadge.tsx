@@ -1,4 +1,4 @@
-import type { RiskTier } from '../data/mockData';
+import type { RiskTier } from '../api_types/Patient';
 
 interface RiskBadgeProps {
   tier: RiskTier;
