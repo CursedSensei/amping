@@ -1,4 +1,4 @@
-package com.pinghtdog.amping.feature.session
+package com.pinghtdog.amping.ui.session
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState

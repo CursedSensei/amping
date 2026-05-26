@@ -12,7 +12,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.pinghtdog.amping.ui.HomeDashboardScreen
-import com.pinghtdog.amping.feature.session.SessionFlowContainer
+import com.pinghtdog.amping.ui.session.SessionFlowContainer
 // Note: If you have a custom theme file, import it here (e.g., com.pinghtdog.amping.ui.theme.AmpingTheme)
 
 import com.pinghtdog.amping.ui.onboarding.onboardingNavGraph

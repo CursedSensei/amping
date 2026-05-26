@@ -1,4 +1,4 @@
-package com.pinghtdog.amping.feature.session
+package com.pinghtdog.amping.ui.session
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*

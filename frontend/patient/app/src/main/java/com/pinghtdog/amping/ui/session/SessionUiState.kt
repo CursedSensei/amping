@@ -1,4 +1,4 @@
-package com.pinghtdog.amping.feature.session
+package com.pinghtdog.amping.ui.session
 
 import com.pinghtdog.amping.data.model.Message
 import com.pinghtdog.amping.data.model.SessionPhase
