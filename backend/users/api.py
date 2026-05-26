@@ -1,10 +1,10 @@
-from ninja import Router
-from ninja.security import django_auth
 from ninja.errors import HttpError
 from django.contrib.auth import authenticate, login, logout
 from django.http import HttpRequest
+from Amping.utils import create_routers
 from users.schemas import Mobile_RefreshTokenResponse, Web_LoginHealthProviderPayload, Mobile_RefreshTokenPayload, Web_LoginHealthProviderResponse, Web_LogoutResponse
-from Amping.api import web_v1_router, mobile_v1_router
+
+mobile_v1_router, web_v1_router = create_routers()
 
 
 # PATIENT AUTHENTICATION
