@@ -8,7 +8,7 @@ def export_schema_to_json(schema_class):
         json.dump(schema_class.model_json_schema(), f)
 
     os.system(f"quicktype -s schema schemas/{schema_class.__name__}.json -o {KOTLIN_OUTPUT_DIR}/{schema_class.__name__}.kt --lang kotlin --framework kotlinx --package com.pinghtdog.amping.api_schemas")
-    os.system(f"quicktype -s schema schemas/{schema_class.__name__}.json -o {TYPESCRIPT_OUTPUT_DIR}/{schema_class.__name__}.ts --lang typescript --just-types --nice-property-names")
+    os.system(f"quicktype -s schema schemas/{schema_class.__name__}.json -o {TYPESCRIPT_OUTPUT_DIR}/{schema_class.__name__}.ts --lang ts --just-types")
     os.remove(f"schemas/{schema_class.__name__}.json")
 
 
