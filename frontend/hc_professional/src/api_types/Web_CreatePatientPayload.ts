@@ -1,4 +1,4 @@
-export interface AuthCreatePatientPayload {
+export interface WebCreatePatientPayload {
     age:     number;
     contact: string;
     email:   string;

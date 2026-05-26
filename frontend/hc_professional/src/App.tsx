@@ -1,14 +1,14 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams, Outlet } from 'react-router-dom';
-import Login from './pages/Login';
-import Signup from './pages/Signup';
-import PatientRoster from './pages/PatientRoster';
-import UnifiedAdherenceRecord from './pages/UnifiedAdherenceRecord';
-import DoseReconciliation from './pages/DoseReconciliation';
-import RiskStratification from './pages/RiskStratification';
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { PatientProvider } from './context/PatientContext';
 import { PatientDetailProvider } from './context/PatientDetailContext';
 import { useAuth } from './hooks/useAuth';
+import DoseReconciliation from './pages/DoseReconciliation';
+import Login from './pages/Login';
+import PatientRoster from './pages/PatientRoster';
+import RiskStratification from './pages/RiskStratification';
+import Signup from './pages/Signup';
+import UnifiedAdherenceRecord from './pages/UnifiedAdherenceRecord';
 
 // ─── Layout: single-patient subtree ─────────────────────────────────────────
 // Mounts PatientDetailProvider once for /patient/:id and /patient/:id/reconcile

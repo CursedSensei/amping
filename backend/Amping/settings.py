@@ -30,6 +30,7 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 DEBUG = os.getenv('DEBUG') == 'True'
 
 CORS_ALLOW_CREDENTIALS = True
+CSRF_COOKIE_HTTPONLY = False
 
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
@@ -41,12 +42,18 @@ if DEBUG:
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
+    CSRF_TRUSTED_ORIGINS = [
+        "http://localhost:5173"
+    ]
 else:
     CORS_ALLOWED_ORIGINS = [
         # TODO: Add production frontend URL here
     ]
     ALLOWED_HOSTS = [
         # TODO: Add production backend URL here
+    ]
+    CSRF_TRUSTED_ORIGINS = [
+        # TODO: Add production frontend URL here
     ]
 
 

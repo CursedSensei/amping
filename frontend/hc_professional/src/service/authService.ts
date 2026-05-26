@@ -1,21 +1,21 @@
-// ─── Auth service stubs ───────────────────────────────────────────────────────
-// Currently simulates network latency and writes to sessionStorage directly.
-// When the backend is ready, swap each stub body for the commented apiClient call.
+import type { WebLoginHealthProviderPayload } from "../api_types/Web_LoginHealthProviderPayload";
+import type { WebLoginHealthProviderResponse } from "../api_types/Web_LoginHealthProviderResponse";
+import type { WebLogoutResponse } from "../api_types/Web_LogoutResponse";
+import apiClient from "./axiosInstance";
 
-// import apiClient from './axiosInstance';
+export async function login(email: string, password: string): Promise<WebLoginHealthProviderResponse> {
+    const data: WebLoginHealthProviderPayload = {
+        email,
+        password,
+    }
 
-export async function login(email: string, password: string): Promise<void> {
-  // TODO: const res = await apiClient.post('/auth/login/', { email, password });
-  //       sessionStorage.setItem('hc_token', res.data.access_token);
-  void email; void password; // consumed by real call above
-  await new Promise<void>((r) => setTimeout(r, 900));
-  sessionStorage.setItem('hc_auth', 'true');
+    const response = await apiClient.post('/login/', data);
+    return response.data;
 }
 
-export async function logout(): Promise<void> {
-  // TODO: await apiClient.post('/auth/logout/');
-  sessionStorage.removeItem('hc_auth');
-  sessionStorage.removeItem('hc_token');
+export async function logout(): Promise<WebLogoutResponse> {
+    const response = await apiClient.post('/logout/');
+    return response.data;
 }
 
 export interface SignupForm {

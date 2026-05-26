@@ -5,9 +5,10 @@
 import axios from 'axios';
 
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1',
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1/web',
   headers: { 'Content-Type': 'application/json' },
   timeout: 10_000,
+  withCredentials: true,
 });
 
 // Attach bearer token on every request when one is present in session storage.
@@ -16,5 +17,9 @@ apiClient.interceptors.request.use((config) => {
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
+
+apiClient.defaults.xsrfCookieName = 'csrftoken';
+apiClient.defaults.xsrfHeaderName = 'X-CSRFToken';
+apiClient.defaults.withXSRFToken = true
 
 export default apiClient;
