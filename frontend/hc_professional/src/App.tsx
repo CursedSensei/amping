@@ -6,6 +6,7 @@ import PatientRoster from './pages/PatientRoster';
 import UnifiedAdherenceRecord from './pages/UnifiedAdherenceRecord';
 import DoseReconciliation from './pages/DoseReconciliation';
 import RiskStratification from './pages/RiskStratification';
+import PatientRegistration from './pages/PatientRegistration';
 
 // ─── Page transition wrapper ────────────────────────────────────────────────
 
@@ -49,6 +50,10 @@ function AnimatedRoutes({ isAuthed, onLogin, onLogout }: {
         <Route
           path="/risk"
           element={isAuthed ? <RiskStratification /> : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/patientregister"
+          element={isAuthed ? <PatientRegistration /> : <Navigate to="/login" replace />}
         />
 
         {/* Fallback */}

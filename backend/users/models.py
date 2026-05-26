@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, AbstractUser
 
@@ -29,7 +31,8 @@ class HealthCareProviderUser(BaseUser, AbstractUser):
 class PatientUser(BaseUser):
     healthcare_provider = models.ForeignKey(HealthCareProviderUser, on_delete=models.CASCADE, related_name='patients')
 
-    age = models.IntegerField()
+    birthdate = models.DateField()
+    age = date.today().year - birthdate.year - ((date.today().month, date.today().day) < (birthdate.month, birthdate.day))
     age_group = models.CharField(max_length=10, choices=AgeGroup.choices, default=AgeGroup.ADULT)
 
     refresh_token = models.CharField(max_length=255, unique=True)
