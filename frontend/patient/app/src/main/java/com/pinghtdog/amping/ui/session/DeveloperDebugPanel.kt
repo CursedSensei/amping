@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.*
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -90,7 +91,11 @@ fun DeveloperDebugPanel(
             AnimatedVisibility(visible = expanded) {
                 Column {
                     Spacer(modifier = Modifier.height(16.dp))
-                    Divider(color = Color.White.copy(alpha = 0.15f))
+                    HorizontalDivider(
+                        Modifier,
+                        DividerDefaults.Thickness,
+                        color = Color.White.copy(alpha = 0.15f)
+                    )
                     Spacer(modifier = Modifier.height(12.dp))
 
                     // 1. Patient Profile Selection
@@ -200,9 +205,99 @@ fun DeveloperDebugPanel(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Divider(color = Color.White.copy(alpha = 0.15f))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // 4. Modal Backend Integration & Diagnostics
+                    Text(
+                        text = "Modal Backend Integration",
+                        color = Color.LightGray,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.04f))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                text = "Real Network Mode (Modal)",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "JWT Handshake + Ktor WebSocket Stream",
+                                color = Color.Gray,
+                                fontSize = 10.sp
+                            )
+                        }
+                        Switch(
+                            checked = uiState.isNetworkMode,
+                            onCheckedChange = { viewModel.toggleNetworkMode(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = CyanPrimary,
+                                checkedTrackColor = CyanPrimary.copy(alpha = 0.4f)
+                            )
+                        )
+                    }
+
+                    // Display visual error block if Ktor encounters communication faults
+                    uiState.networkError?.let { error ->
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = RedPenalty.copy(alpha = 0.15f)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, RedPenalty, RoundedCornerShape(8.dp)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = "BACKEND ERROR DETECTED",
+                                        color = RedPenalty,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                    Text(
+                                        text = "DISMISS",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 9.sp,
+                                        modifier = Modifier.clickable { viewModel.dismissNetworkError() }
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = error,
+                                    color = Color.White.copy(alpha = 0.9f),
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(
+                        Modifier,
+                        DividerDefaults.Thickness,
+                        color = Color.White.copy(alpha = 0.15f)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
 
                     // Telemetry Output View
                     Row(

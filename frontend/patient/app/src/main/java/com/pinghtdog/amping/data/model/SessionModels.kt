@@ -22,3 +22,16 @@ data class Message(
     val content: String,
     val toolCall: ToolCall? = null
 )
+
+@Serializable
+data class SessionTokenResponse(
+    val token: String,
+    val modalUrl: String
+)
+
+@Serializable
+data class ChatStreamChunk(
+    val type: String, // "token", "done", "error"
+    val content: String? = null,
+    val message: String? = null
+)

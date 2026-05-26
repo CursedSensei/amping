@@ -16,5 +16,13 @@ data class SessionUiState(
     val emergencyState: String? = null, // Non-null displays crisis override card
     val activeProfile: String = "youth", // "youth", "senior", "adult"
     val streakCount: Int = 5,
-    val xpEarned: Int = 120
+    val xpEarned: Int = 120,
+    val isNetworkMode: Boolean = false, // Toggle Ktor vs Mock mode
+    val networkError: String? = null, // Non-null displays network communication error card
+    
+    // Voice-guided UI specific states
+    val currentSubtitleText: String = "",
+    val isTtsSpeaking: Boolean = false,
+    val pendingToolCallName: String? = null,
+    val pendingToolCallArgs: Map<String, String> = emptyMap()
 )
