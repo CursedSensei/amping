@@ -12,13 +12,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.pinghtdog.amping.ui.HomeDashboardScreen
-import com.pinghtdog.amping.ui.SessionLaunchScreen
-import com.pinghtdog.amping.ui.SuccessScreen
-import com.pinghtdog.amping.ui.SymptomReportScreen
-import com.pinghtdog.amping.ui.VideoRecordingScreen
-import com.pinghtdog.amping.ui.VideoReviewScreen
+import com.pinghtdog.amping.ui.session.SessionFlowContainer
 // Note: If you have a custom theme file, import it here (e.g., com.pinghtdog.amping.ui.theme.AmpingTheme)
 
+import com.pinghtdog.amping.ui.onboarding.onboardingNavGraph
+import dagger.hilt.android.AndroidEntryPoint
+
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,7 +42,17 @@ fun AmpingAppNavigation() {
     val navController = rememberNavController()
 
     // The NavHost maps text "routes" to your actual Compose screens
-    NavHost(navController = navController, startDestination = "home") {
+    NavHost(navController = navController, startDestination = "onboarding") {
+
+        // 0. Onboarding Flow
+        onboardingNavGraph(
+            navController = navController,
+            onOnboardingComplete = {
+                navController.navigate("home") {
+                    popUpTo("onboarding") { inclusive = true }
+                }
+            }
+        )
 
         // 1. Home Dashboard
         composable("home") {
@@ -51,40 +61,10 @@ fun AmpingAppNavigation() {
             )
         }
 
-        // 2. Session Launch (Gabby Greeting & Mood)
+        // 2. Interactive AI-Guided Session Flow (Consolidates conversation, symptoms, camera & success)
         composable("session_launch") {
-            SessionLaunchScreen(
-                onMoodSelected = { navController.navigate("symptom_report") }
-            )
-        }
-
-        // 3. Symptom Report
-        composable("symptom_report") {
-            SymptomReportScreen(
-                onSymptomsLogged = { navController.navigate("video_record") }
-            )
-        }
-
-        // 4. Video Recording
-        composable("video_record") {
-            VideoRecordingScreen(
-                onVideoRecorded = { navController.navigate("video_review") }
-            )
-        }
-
-        // 5. Video Review & Upload
-        composable("video_review") {
-            VideoReviewScreen(
-                onUpload = { navController.navigate("success") }
-            )
-        }
-
-        // 6. Success & Reward Celebration
-        composable("success") {
-            SuccessScreen(
+            SessionFlowContainer(
                 onGoHome = {
-                    // Navigates back to home and clears the backstack so the user
-                    // doesn't press 'back' and end up on the success screen again.
                     navController.navigate("home") {
                         popUpTo("home") { inclusive = true }
                     }

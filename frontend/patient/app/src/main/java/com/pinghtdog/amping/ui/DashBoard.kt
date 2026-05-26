@@ -83,6 +83,8 @@ fun HomeDashboardScreen(onStartSession: () -> Unit) {
                 )
             }
 
+
+
             // Hero Header
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -125,6 +127,10 @@ fun HomeDashboardScreen(onStartSession: () -> Unit) {
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+
+            GabbyIdle(
+                modifier = Modifier.size(120.dp)
+            )
 
             // Streak Widget
             StreakCircularWidget()
@@ -258,5 +264,21 @@ fun CustomBottomNavigation(onGabbyClick: () -> Unit) {
         ) {
             Icon(Icons.Filled.Face, contentDescription = "Talk to Gabby", tint = Color.White, modifier = Modifier.size(40.dp))
         }
+    }
+}
+
+@Composable
+fun GabbyIdle(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(CyanPrimary, CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            Icons.Filled.Face,
+            contentDescription = "Gabby Idle",
+            tint = Color.White,
+            modifier = Modifier.size(80.dp)
+        )
     }
 }
