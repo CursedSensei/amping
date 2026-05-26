@@ -1,6 +1,7 @@
+import { AlertCircle, Eye, EyeOff, Loader2, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { login } from '../services/login';
 
 interface LoginProps {
   onLogin: () => void;
@@ -33,13 +34,17 @@ export default function Login({ onLogin }: LoginProps) {
 
     // Simulate network call — no backend yet
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 900));
-    setLoading(false);
-
-    // Store a simple session flag
-    sessionStorage.setItem('hc_auth', 'true');
-    onLogin();
-    navigate('/', { replace: true });
+    login(email, password)
+      .then(() => {
+        // Store a simple session flag
+        sessionStorage.setItem('hc_auth', 'true');
+        onLogin();
+        navigate('/', { replace: true });
+      })
+      .catch((err) => {
+        setError(err.response?.data?.detail || 'Login failed. Please try again.');
+      })
+      .finally(() => setLoading(false));
   };
 
   return (

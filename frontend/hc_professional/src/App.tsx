@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import Login from './pages/Login';
-import Signup from './pages/Signup';
-import PatientRoster from './pages/PatientRoster';
-import UnifiedAdherenceRecord from './pages/UnifiedAdherenceRecord';
+import { useEffect, useState } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import DoseReconciliation from './pages/DoseReconciliation';
+import Login from './pages/Login';
+import PatientRoster from './pages/PatientRoster';
 import RiskStratification from './pages/RiskStratification';
+import Signup from './pages/Signup';
+import UnifiedAdherenceRecord from './pages/UnifiedAdherenceRecord';
+import { logout } from './services/logout';
 
 // ─── Page transition wrapper ────────────────────────────────────────────────
 
@@ -72,8 +73,10 @@ export default function App() {
 
   const handleLogin = () => setIsAuthed(true);
   const handleLogout = () => {
-    sessionStorage.removeItem('hc_auth');
-    setIsAuthed(false);
+    logout().then(() => {
+      setIsAuthed(false);
+      sessionStorage.removeItem('hc_auth');
+    }).catch(() => {});
   };
 
   return (
