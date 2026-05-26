@@ -29,12 +29,20 @@ class Mobile_RefreshTokenResponse(ApiSchema):
 
 
 class Web_PatientDetailResponse(ApiSchema):
+    class Web_PatientGuardianEntry(ApiSchema):
+        id: int
+        firstname: str
+        lastname: str
+        email: str
+        contact: str
+
     id: int
     firstname: str
     lastname: str
     email: str
     contact: str
     birthyear: int
+    guardians: list[Web_PatientGuardianEntry]
 
     regimen_start: date
     current_day: int
@@ -43,6 +51,14 @@ class Web_PatientDetailResponse(ApiSchema):
     month_pdc: float
     pdc_target: float
     month3_protected: bool
+
+class Web_HealthCareProviderDetailResponse(ApiSchema):
+    id: int
+    firstname: str
+    lastname: str
+    email: str
+    contact: str
+    clinic: str
 
 __ALL__ = [
     "Web_CreatePatientPayload",
@@ -53,4 +69,5 @@ __ALL__ = [
     "Mobile_RefreshTokenPayload",
     "Mobile_RefreshTokenResponse",
     "Web_PatientDetailResponse",
+    "Web_HealthCareProviderDetailResponse",
 ]
