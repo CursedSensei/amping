@@ -1,12 +1,22 @@
 export interface WebAdherenceMonthResponse {
     adherence_days: WebAdherenceDayEntry[];
     month:          number;
+    month_pdc:      number;
+    pdc_target:     number;
     year:           number;
 }
 
 export interface WebAdherenceDayEntry {
-    adherence_type: string;
-    date:           Date;
-    symptoms:       string[];
-    video_link:     null | string;
+    date:       Date;
+    id:         number;
+    status:     AdherenceStatusEnum;
+    symptoms:   string[];
+    video_link: null | string;
+}
+
+export enum AdherenceStatusEnum {
+    AppRecorded = "app_recorded",
+    ProviderReconciled = "provider_reconciled",
+    TechnicalMiss = "technical_miss",
+    UnverifiedAbsence = "unverified_absence",
 }

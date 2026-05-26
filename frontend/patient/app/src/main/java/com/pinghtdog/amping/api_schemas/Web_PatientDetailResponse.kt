@@ -20,6 +20,7 @@ data class WebPatientDetailResponse (
 
     val email: String,
     val firstname: String,
+    val guardians: List<WebPatientGuardianEntry>,
     val id: Long,
     val lastname: String,
 
@@ -37,4 +38,13 @@ data class WebPatientDetailResponse (
 
     @SerialName("total_days")
     val totalDays: Long
+)
+
+@Serializable
+data class WebPatientGuardianEntry (
+    val contact: String,
+    val email: String,
+    val firstname: String,
+    val id: Long,
+    val lastname: String
 )
