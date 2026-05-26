@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ShieldCheck, ChevronRight, Zap, CheckCircle2, X } from 'lucide-react';
-import { MOCK_PATIENTS, type AnomalousEntry } from '../data/mockData';
+import type { AnomalousEntry } from '../api_types/Patient';
+import { usePatientDetail } from '../hooks/usePatientDetail';
 
 // ─── Status config ──────────────────────────────────────────────────────────
 
@@ -154,16 +155,24 @@ function ReconcileModal({
 export default function DoseReconciliation() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const patient = MOCK_PATIENTS.find((p) => p.id === id);
+  const { patient, isLoading, applyReconciliation } = usePatientDetail();
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showModal, setShowModal] = useState(false);
   const [reconciled, setReconciled] = useState<Set<string>>(new Set());
   const [showToast, setShowToast] = useState(false);
-  // Live streak mirrors the patient's streak, increases when reconciled
-  const [liveStreak, setLiveStreak] = useState(patient?.currentStreak ?? 0);
+  // liveStreak starts from context value; updates when reconciliation is applied
+  const [liveStreak, setLiveStreak] = useState<number | null>(null);
 
+  // Sync liveStreak with context once patient loads
+  useEffect(() => {
+    if (patient) setLiveStreak(patient.currentStreak);
+  }, [patient]);
+
+  if (isLoading) return <div className="p-8 text-gray-400">Loading…</div>;
   if (!patient) return <div className="p-8 text-gray-500">Patient not found.</div>;
+
+  const currentStreak = liveStreak ?? patient.currentStreak;
 
   const toggle = (entryId: string) => {
     setSelected((prev) => {
@@ -173,22 +182,21 @@ export default function DoseReconciliation() {
     });
   };
 
-  const handleConfirm = (method: string, _reason: string) => {
-    const count = selected.size;
-    setReconciled((prev) => new Set([...prev, ...selected]));
+  const handleConfirm = async (method: string, reason: string) => {
+    const entryIds = [...selected];
+    setReconciled((prev) => new Set([...prev, ...entryIds]));
     setSelected(new Set());
     setShowModal(false);
     setShowToast(true);
-    // Restore streak: each reconciled day +1 (simplified — shows intent)
-    setLiveStreak((prev) => Math.min(prev + count, patient.bestStreak));
-    console.log('Verification method:', method);
+    const result = await applyReconciliation(entryIds, method, reason);
+    setLiveStreak(result.updatedStreak);
   };
 
   const selectedEntries = patient.anomalousEntries.filter((e) => selected.has(e.id));
   const pending = patient.anomalousEntries.filter((e) => !reconciled.has(e.id));
   const reconciledEntries = patient.anomalousEntries.filter((e) => reconciled.has(e.id));
 
-  const streakChanged = liveStreak > patient.currentStreak;
+  const streakChanged = currentStreak > patient.currentStreak;
 
   return (
     <div className="min-h-screen bg-gray-50 relative">
@@ -265,10 +273,10 @@ export default function DoseReconciliation() {
                 <span
                   className={`font-bold text-xl leading-none transition-colors ${streakChanged ? 'text-green-600' : 'text-gray-900'}`}
                 >
-                  {liveStreak}
+                  {currentStreak}
                 </span>
                 <span className="text-xs text-gray-400 ml-0.5">days</span>
-                {liveStreak < patient.bestStreak && (
+                {currentStreak < patient.bestStreak && (
                   <span className="text-[11px] text-gray-400">(broken from {patient.bestStreak})</span>
                 )}
                 {streakChanged && (

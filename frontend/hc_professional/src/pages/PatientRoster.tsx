@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Wifi, AlertCircle, ChevronRight, LogOut } from 'lucide-react';
+import { Zap, Wifi, AlertCircle, ChevronRight } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import RiskBadge from '../components/RiskBadge';
 import HeartQuota from '../components/HeartQuota';
-import { MOCK_PATIENTS, type Patient } from '../data/mockData';
+import type { Patient } from '../api_types/Patient';
+import { usePatients } from '../hooks/usePatients';
+import { useAuth } from '../hooks/useAuth';
 
 type RiskFilter = 'all' | 'high' | 'low';
 
@@ -104,12 +106,14 @@ function PatientCard({ patient }: { patient: Patient }) {
   );
 }
 
-export default function PatientRoster({ onLogout }: { onLogout?: () => void }) {
+export default function PatientRoster() {
   const [filter, setFilter] = useState<RiskFilter>('all');
   const [search, setSearch] = useState('');
   const navigate = useNavigate();
+  const { patients } = usePatients();
+  const { logout } = useAuth();
 
-  const filtered = MOCK_PATIENTS.filter((p) => {
+  const filtered = patients.filter((p) => {
     const matchSearch =
       !search ||
       p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -127,7 +131,7 @@ export default function PatientRoster({ onLogout }: { onLogout?: () => void }) {
         onSearch={setSearch}
         onFilter={setFilter}
         activeFilter={filter}
-        onLogout={onLogout}
+        onLogout={logout}
       />
 
       <main className="flex-1 p-8 overflow-y-auto h-full">

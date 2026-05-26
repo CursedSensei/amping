@@ -23,7 +23,8 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { useReactToPrint } from 'react-to-print';
-import { MOCK_PATIENTS, type DayStatus } from '../data/mockData';
+import type { DayStatus } from '../api_types/Patient';
+import { usePatientDetail } from '../hooks/usePatientDetail';
 import HeartQuota from '../components/HeartQuota';
 
 // ─── Local grid cell type ─────────────────────────────────────────────────
@@ -324,7 +325,7 @@ function SymptomsPanel({ initial }: { initial?: string[] }) {
 export default function UnifiedAdherenceRecord() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const patient = MOCK_PATIENTS.find((p) => p.id === id);
+  const { patient, isLoading } = usePatientDetail();
   const printRef = useRef<HTMLDivElement>(null);
 
   const [selectedCell, setSelectedCell] = useState<GridCell | null>(null);
@@ -344,6 +345,7 @@ export default function UnifiedAdherenceRecord() {
     documentTitle: patient ? `UAR_${patient.patientId}` : 'UnifiedAdherenceRecord',
   });
 
+  if (isLoading) return <div className="p-8 text-gray-400">Loading…</div>;
   if (!patient) return <div className="p-8 text-gray-500">Patient not found.</div>;
 
   const isOnTrack = patient.monthPDC >= patient.pdcTarget;

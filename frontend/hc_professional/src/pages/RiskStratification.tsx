@@ -16,7 +16,8 @@ import {
 } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import Sidebar from '../components/Sidebar';
-import { MOCK_PATIENTS, type Patient, type RiskTier } from '../data/mockData';
+import type { Patient, RiskTier } from '../api_types/Patient';
+import { usePatients } from '../hooks/usePatients';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -414,20 +415,21 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
 
 export default function RiskStratification() {
   const navigate = useNavigate();
+  const { patients } = usePatients();
 
   const [toast, setToast] = useState('');
   const [bhwPatient, setBhwPatient] = useState<ModalPatient>(null);
   const [dotPatient, setDotPatient] = useState<ModalPatient>(null);
 
   const stats = {
-    total: MOCK_PATIENTS.length,
-    atRisk: MOCK_PATIENTS.filter((p) => p.riskTier !== 'safe').length,
-    safe: MOCK_PATIENTS.filter((p) => p.riskTier === 'safe').length,
-    month3: MOCK_PATIENTS.filter((p) => p.month3Protected).length,
+    total: patients.length,
+    atRisk: patients.filter((p) => p.riskTier !== 'safe').length,
+    safe: patients.filter((p) => p.riskTier === 'safe').length,
+    month3: patients.filter((p) => p.month3Protected).length,
   };
 
   const tierOrder: RiskTier[] = ['tier3', 'tier2', 'tier1', 'safe'];
-  const sorted = [...MOCK_PATIENTS].sort(
+  const sorted = [...patients].sort(
     (a, b) => tierOrder.indexOf(a.riskTier) - tierOrder.indexOf(b.riskTier)
   );
 
