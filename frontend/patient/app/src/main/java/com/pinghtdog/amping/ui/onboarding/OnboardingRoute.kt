@@ -21,6 +21,6 @@ sealed class OnboardingRoute(val route: String) {
     object WelcomeComplete : OnboardingRoute("ob15_welcome_complete")
 
     companion object {
-        val startDestination = Splash.route
+        val startDestination: String get() = "ob01_splash"
     }
 }
