@@ -67,7 +67,9 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'corsheaders',
-    'users'
+    'users',
+    'adherence',
+    'gamification',
 ]
 
 MIDDLEWARE = [

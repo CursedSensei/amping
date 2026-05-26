@@ -29,6 +29,7 @@ class HealthCareProviderUser(BaseUser, AbstractUser):
 class PatientUser(BaseUser):
     healthcare_provider = models.ForeignKey(HealthCareProviderUser, on_delete=models.CASCADE, related_name='patients')
 
+    email = models.EmailField(blank=True)
     age = models.IntegerField()
     age_group = models.CharField(max_length=10, choices=AgeGroup.choices, default=AgeGroup.ADULT)
 
@@ -38,6 +39,8 @@ class PatientUser(BaseUser):
 
 class PatientGuardian(BaseUser):
     patient = models.ForeignKey(PatientUser, on_delete=models.CASCADE, related_name='guardians')
+
+    email = models.EmailField(blank=True)
 
 
 class Token(models.Model):

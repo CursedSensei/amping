@@ -1,4 +1,5 @@
 from Amping.schemas import ApiSchema
+from datetime import date
 
 class Web_CreatePatientPayload(ApiSchema):
     name: str
@@ -25,6 +26,24 @@ class Mobile_RefreshTokenPayload(ApiSchema):
 class Mobile_RefreshTokenResponse(ApiSchema):
     access_token: str
 
+
+
+class Web_PatientDetailResponse(ApiSchema):
+    id: int
+    firstname: str
+    lastname: str
+    email: str
+    contact: str
+    birthyear: int
+
+    regimen_start: date
+    current_day: int
+    total_days: int
+
+    month_pdc: float
+    pdc_target: float
+    month3_protected: bool
+
 __ALL__ = [
     "Web_CreatePatientPayload",
     "Web_CreatePatientResponse",
@@ -32,5 +51,6 @@ __ALL__ = [
     "Web_LoginHealthProviderResponse",
     "Web_LogoutResponse",
     "Mobile_RefreshTokenPayload",
-    "Mobile_RefreshTokenResponse"
+    "Mobile_RefreshTokenResponse",
+    "Web_PatientDetailResponse",
 ]
