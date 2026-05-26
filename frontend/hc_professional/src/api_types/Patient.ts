@@ -16,13 +16,13 @@ export interface WeekDay {
 
 export interface AnomalousEntry {
   id: string;
-  date: string;
+  date: Date;
   statusBadge: 'unverified-miss' | 'tech-failure' | 'app-miss';
   detectedCause: string;
 }
 
 export interface PenaltyEvent {
-  date: string;
+  date: Date;
   tier: 1 | 2;
   label: string;
 }
@@ -47,7 +47,7 @@ export interface Patient {
   provider: string;
   bhw: string;
   patientId: string;
-  regimentStart: string;
+  regimentStart: Date;
   currentDay: number;
   totalDays: number;
   currentStreak: number;
