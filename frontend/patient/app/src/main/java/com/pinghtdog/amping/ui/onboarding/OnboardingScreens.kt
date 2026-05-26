@@ -547,12 +547,15 @@ fun GuardianSetupScreen(onNext: () -> Unit, onSkip: () -> Unit) {
             relations.take(3).forEach { rel ->
                 // 1. Determine the border first
                 val chipBorder = if (relationship == rel) {
-                    SuggestionChipDefaults.suggestionChipBorder(
-                        borderColor = MaterialTheme.colorScheme.primary,
-                        borderWidth = 2.dp // Optional: make the selection more obvious
+                    androidx.compose.foundation.BorderStroke(
+                        width = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 } else {
-                    SuggestionChipDefaults.suggestionChipBorder()
+                    androidx.compose.foundation.BorderStroke(
+                        width = 1.dp,
+                        color = Color.LightGray
+                    )
                 }
 
                 // 2. Pass the pre-calculated border

@@ -266,3 +266,19 @@ fun CustomBottomNavigation(onGabbyClick: () -> Unit) {
         }
     }
 }
+
+@Composable
+fun GabbyIdle(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(CyanPrimary, CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            Icons.Filled.Face,
+            contentDescription = "Gabby Idle",
+            tint = Color.White,
+            modifier = Modifier.size(80.dp)
+        )
+    }
+}
