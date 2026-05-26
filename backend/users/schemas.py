@@ -30,6 +30,7 @@ __ALL__ = [
     "Web_CreatePatientResponse",
     "Web_LoginHealthProviderPayload",
     "Web_LoginHealthProviderResponse",
+    "Web_LogoutResponse",
     "Mobile_RefreshTokenPayload",
     "Mobile_RefreshTokenResponse"
 ]
