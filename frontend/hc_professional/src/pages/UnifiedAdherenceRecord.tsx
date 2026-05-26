@@ -145,74 +145,6 @@ function CalCell({
 
 // ─── Day Detail Panel ──────────────────────────────────────────────────────
 
-function DayDetailPanel({
-  cell,
-  month,
-  onClose,
-}: {
-  cell: GridCell;
-  month: string;
-  onClose: () => void;
-}) {
-  // Only called for real DayStatus cells (not 'empty')
-  const status = cell.status as DayStatus;
-  const [mo, yr] = month.split(' ');
-
-  return (
-    <div
-      className={`border rounded-xl p-4 ${STATUS_BG[status]} flex items-start gap-3`}
-      style={{ animation: 'fadein 0.15s ease' }}
-    >
-      <div
-        className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${STATUS_STYLE[status].split(' ')[0]} text-white shrink-0`}
-      >
-        {cell.date}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between mb-0.5">
-          <span className={`text-xs font-bold uppercase tracking-wider ${STATUS_TEXT[status]}`}>
-            {STATUS_LABEL[status]}
-          </span>
-          <span className="text-[11px] text-gray-400">
-            {mo} {cell.date}, {yr}
-          </span>
-        </div>
-        <p className={`text-[12px] leading-relaxed ${STATUS_TEXT[status]} opacity-80`}>
-          {cell.note ?? 'Video dose log submitted via Gabby and verified by upload.'}
-        </p>
-      </div>
-      <button
-        onClick={onClose}
-        className="text-gray-400 hover:text-gray-600 transition-colors shrink-0 mt-0.5"
-      >
-        <X size={14} />
-      </button>
-    </div>
-  );
-}
-
-// ─── Recharts Tooltip ──────────────────────────────────────────────────────
-
-function CustomTooltip({
-  active,
-  payload,
-  label,
-}: {
-  active?: boolean;
-  payload?: { value: number }[];
-  label?: string;
-}) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2">
-      <p className="text-[11px] text-gray-500 mb-0.5">{label}</p>
-      <p className="text-sm font-bold text-blue-600">{payload[0].value}% PDC</p>
-    </div>
-  );
-}
-
-// ─── Symptoms / Side-effects panel ─────────────────────────────────────────
-
 const PRESET_SYMPTOMS = [
   'Dizziness', 'Nausea', 'Vomiting', 'Headache', 'Fatigue',
   'Stomach pain', 'Skin rash', 'Joint pain', 'Vision changes', 'Jaundice',
@@ -315,6 +247,86 @@ function SymptomsPanel({ initial }: { initial?: string[] }) {
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+function DayDetailPanel({
+  cell,
+  month,
+  onClose,
+}: {
+  cell: GridCell;
+  month: string;
+  onClose: () => void;
+}) {
+  // Only called for real DayStatus cells (not 'empty')
+  const status = cell.status as DayStatus;
+  const [mo, yr] = month.split(' ');
+  const { id } = useParams<{ id: string }>();
+  const patient = MOCK_PATIENTS.find((p) => p.id === id);
+
+  return (
+    <div
+      className={`border rounded-xl p-4 ${STATUS_BG[status]} flex flex-col gap-4`}
+      style={{ animation: 'fadein 0.15s ease' }}
+    >
+      {/* Top Row: Status Badge, Details Text, and Close Button */}
+      <div className="flex items-start gap-3">
+        <div
+          className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${STATUS_STYLE[status].split(' ')[0]} text-white shrink-0`}
+        >
+          {cell.date}
+        </div>
+        
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between mb-0.5">
+            <span className={`text-xs font-bold uppercase tracking-wider ${STATUS_TEXT[status]}`}>
+              {STATUS_LABEL[status]}
+            </span>
+            <span className="text-[11px] text-gray-400">
+              {mo} {cell.date}, {yr}
+            </span>
+          </div>
+          <p className={`text-[12px] leading-relaxed ${STATUS_TEXT[status]} opacity-80`}>
+            {cell.note ?? 'Video dose log submitted via Gabby and verified by upload.'}
+          </p>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="text-gray-400 hover:text-gray-600 transition-colors shrink-0 mt-0.5"
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      {/* Bottom Row: Full-width Symptoms Panel */}
+      {patient && (
+        <div className="w-full">
+          <SymptomsPanel initial={patient.symptomReported} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Recharts Tooltip ──────────────────────────────────────────────────────
+
+function CustomTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: { value: number }[];
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2">
+      <p className="text-[11px] text-gray-500 mb-0.5">{label}</p>
+      <p className="text-sm font-bold text-blue-600">{payload[0].value}% PDC</p>
     </div>
   );
 }
@@ -693,9 +705,6 @@ export default function UnifiedAdherenceRecord() {
                   </div>
                 )}
               </div>
-
-              {/* Symptoms panel */}
-              <SymptomsPanel initial={patient.symptomReported} />
 
               {/* Month 3 protection card */}
               {patient.month3Protected && (
