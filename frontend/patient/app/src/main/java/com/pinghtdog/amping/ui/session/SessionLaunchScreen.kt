@@ -17,13 +17,22 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import android.Manifest
+import android.content.pm.PackageManager
+import android.widget.Toast
 import com.pinghtdog.amping.data.model.Message
 import com.pinghtdog.amping.ui.theme.*
 import kotlinx.coroutines.launch
@@ -38,6 +47,17 @@ fun SessionLaunchScreen(
     val coroutineScope = rememberCoroutineScope()
     var inputText by remember { mutableStateOf("") }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val context = LocalContext.current
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.startSpeechListening()
+        } else {
+            Toast.makeText(context, "Microphone permission required for voice recognition", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // Automatically scroll to bottom when chat messages update or assistant is typing
     LaunchedEffect(uiState.chatHistory.size, uiState.assistantTyping) {
@@ -46,6 +66,22 @@ fun SessionLaunchScreen(
                 chatState.animateScrollToItem(uiState.chatHistory.size - 1)
             }
         }
+    }
+
+    // Profile dependent theme styling
+    val (primaryColor, gradientColors) = when (uiState.activeProfile) {
+        "youth" -> Pair(
+            Color(0xFFFF2B88), // Vibrantly Playful Pink/Magenta
+            listOf(Color(0xFFFF2B88), Color(0xFF9C27B0))
+        )
+        "senior" -> Pair(
+            Color(0xFFFF9800), // Warm & Clear Amber/Orange
+            listOf(Color(0xFFFF9800), Color(0xFFFF5722))
+        )
+        else -> Pair(
+            CyanPrimary, // Professional & Slick Teal/Cyan
+            listOf(CyanPrimary, Color(0xFF007A87))
+        )
     }
 
     Box(
@@ -74,22 +110,308 @@ fun SessionLaunchScreen(
                 textAlign = TextAlign.Center
             )
 
-            // Chat Lazy List
-            LazyColumn(
-                state = chatState,
+            // Central voice-guided avatar visualizer
+            Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
             ) {
-                items(uiState.chatHistory) { message ->
-                    ChatBubble(message = message, activeProfile = uiState.activeProfile)
+                val infiniteTransition = rememberInfiniteTransition(label = "avatar_pulse")
+                
+                // Dynamic speed and size based on TTS / Listening status
+                val pulseDuration = if (uiState.isTtsSpeaking) 1200 else if (uiState.isListening) 800 else 2400
+                val targetScale1 = if (uiState.isTtsSpeaking) 1.5f else if (uiState.isListening) 1.3f else 1.15f
+                val targetScale2 = if (uiState.isTtsSpeaking) 2.0f else if (uiState.isListening) 1.6f else 1.3f
+                val targetScale3 = if (uiState.isTtsSpeaking) 2.5f else if (uiState.isListening) 2.0f else 1.45f
+
+                val scale1 by infiniteTransition.animateFloat(
+                    initialValue = 1.0f,
+                    targetValue = targetScale1,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = pulseDuration, easing = EaseOutQuad),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "scale1"
+                )
+                val alpha1 by infiniteTransition.animateFloat(
+                    initialValue = 0.5f,
+                    targetValue = 0.05f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = pulseDuration, easing = EaseOutQuad),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "alpha1"
+                )
+
+                val scale2 by infiniteTransition.animateFloat(
+                    initialValue = 1.0f,
+                    targetValue = targetScale2,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = pulseDuration, delayMillis = pulseDuration / 3, easing = EaseOutQuad),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "scale2"
+                )
+                val alpha2 by infiniteTransition.animateFloat(
+                    initialValue = 0.35f,
+                    targetValue = 0.02f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = pulseDuration, delayMillis = pulseDuration / 3, easing = EaseOutQuad),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "alpha2"
+                )
+
+                val scale3 by infiniteTransition.animateFloat(
+                    initialValue = 1.0f,
+                    targetValue = targetScale3,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = pulseDuration, delayMillis = (pulseDuration * 2) / 3, easing = EaseOutQuad),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "scale3"
+                )
+                val alpha3 by infiniteTransition.animateFloat(
+                    initialValue = 0.2f,
+                    targetValue = 0.01f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = pulseDuration, delayMillis = (pulseDuration * 2) / 3, easing = EaseOutQuad),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "alpha3"
+                )
+
+                val glowingColor = if (uiState.isListening) RedPenalty else primaryColor
+
+                // Concentric Ripple Ring 3
+                Box(
+                    modifier = Modifier
+                        .size(140.dp)
+                        .graphicsLayer(scaleX = scale3, scaleY = scale3, alpha = alpha3)
+                        .background(
+                            brush = Brush.radialGradient(
+                                colors = listOf(glowingColor.copy(alpha = 0.4f), Color.Transparent)
+                            ),
+                            shape = CircleShape
+                        )
+                )
+
+                // Concentric Ripple Ring 2
+                Box(
+                    modifier = Modifier
+                        .size(140.dp)
+                        .graphicsLayer(scaleX = scale2, scaleY = scale2, alpha = alpha2)
+                        .background(
+                            brush = Brush.radialGradient(
+                                colors = listOf(glowingColor.copy(alpha = 0.5f), Color.Transparent)
+                            ),
+                            shape = CircleShape
+                        )
+                )
+
+                // Concentric Ripple Ring 1
+                Box(
+                    modifier = Modifier
+                        .size(140.dp)
+                        .graphicsLayer(scaleX = scale1, scaleY = scale1, alpha = alpha1)
+                        .background(
+                            brush = Brush.radialGradient(
+                                colors = listOf(glowingColor.copy(alpha = 0.6f), Color.Transparent)
+                            ),
+                            shape = CircleShape
+                        )
+                )
+
+                // Central Active Avatar Orb
+                Box(
+                    modifier = Modifier
+                        .size(140.dp)
+                        .background(
+                            brush = Brush.linearGradient(
+                                colors = if (uiState.isListening) listOf(RedPenalty, Color(0xFF991B1B)) else gradientColors
+                            ),
+                            shape = CircleShape
+                        )
+                        .border(
+                            width = 3.dp,
+                            color = Color.White,
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (uiState.isListening) Icons.Filled.Mic else Icons.Filled.Face,
+                        contentDescription = "Gabby Speaker",
+                        tint = Color.White,
+                        modifier = Modifier.size(68.dp)
+                    )
+                }
+            }
+
+            // Intent Parsing / Deferred Action Banner
+            AnimatedVisibility(
+                visible = uiState.pendingToolCallName != null,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                val friendlyName = when (uiState.pendingToolCallName) {
+                    "show_symptom_checklist", "transition_to_symptoms" -> "Opening symptom checklist questionnaire..."
+                    "transition_to_vdot" -> "Preparing secure medicine check-in..."
+                    "trigger_vdot" -> "Opening secure camera recording..."
+                    else -> "Executing intent..."
                 }
 
-                if (uiState.assistantTyping) {
-                    item {
-                        TypingIndicatorBubble()
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 6.dp)
+                        .border(1.dp, Color(0xFF10B981), RoundedCornerShape(14.dp)),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFECFDF5))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = null,
+                                tint = Color(0xFF10B981),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "CLINICAL INTENT DETECTED",
+                                    color = Color(0xFF047857),
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 0.5.sp
+                                )
+                                Text(
+                                    text = friendlyName,
+                                    color = TextDark,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = { viewModel.executePendingToolCall() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text(
+                                text = "Skip Voice & Go",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Display last user message during the conversation
+            val lastUserMessage = uiState.chatHistory.lastOrNull { it.role == "user" }
+            AnimatedVisibility(
+                visible = lastUserMessage != null && !lastUserMessage.content.isNullOrBlank(),
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(primaryColor.copy(alpha = 0.08f))
+                            .border(1.dp, primaryColor.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Person,
+                                contentDescription = null,
+                                tint = primaryColor,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "You said: \"${lastUserMessage?.content}\"",
+                                color = TextDark,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Glassmorphic Audio Subtitles Drawer
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 12.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color.White.copy(alpha = 0.85f))
+                    .border(
+                        width = 1.dp,
+                        color = (if (uiState.isListening) RedPenalty else primaryColor).copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(24.dp)
+                    )
+                    .padding(20.dp)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    if (uiState.assistantTyping) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Gabby is formulating a response",
+                                color = TextMuted,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            TypingDotRow()
+                        }
+                    } else {
+                        val subtitleText = uiState.currentSubtitleText.ifBlank {
+                            when (uiState.activeProfile) {
+                                "youth" -> "Yo champion! Tap the mic to chat with Gabby! 🚀"
+                                "senior" -> "Hello dear, tap the microphone to talk with me."
+                                else -> "Tap the microphone below to begin speaking with Gabby."
+                            }
+                        }
+                        Text(
+                            text = subtitleText,
+                            color = TextDark,
+                            fontSize = 17.sp,
+                            lineHeight = 24.sp,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
             }
@@ -121,7 +443,7 @@ fun SessionLaunchScreen(
                                 .height(38.dp)
                                 .border(
                                     width = 1.dp,
-                                    color = CyanPrimary.copy(alpha = 0.3f),
+                                    color = primaryColor.copy(alpha = 0.3f),
                                     shape = RoundedCornerShape(20.dp)
                                 )
                         ) {
@@ -144,19 +466,32 @@ fun SessionLaunchScreen(
                 IconButton(
                     onClick = {
                         keyboardController?.hide()
-                        viewModel.simulateSpeechInput()
+                        val hasPermission = ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.RECORD_AUDIO
+                        ) == PackageManager.PERMISSION_GRANTED
+                        
+                        if (hasPermission) {
+                            if (uiState.isListening) {
+                                viewModel.stopSpeechListening()
+                            } else {
+                                viewModel.startSpeechListening()
+                            }
+                        } else {
+                            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
                     },
                     modifier = Modifier
                         .size(48.dp)
                         .background(
-                            if (uiState.isListening) RedPenalty.copy(alpha = 0.1f) else CyanPrimary.copy(alpha = 0.1f),
+                            if (uiState.isListening) RedPenalty.copy(alpha = 0.1f) else primaryColor.copy(alpha = 0.1f),
                             CircleShape
                         )
                 ) {
                     Icon(
                         imageVector = if (uiState.isListening) Icons.Filled.MicOff else Icons.Filled.Mic,
                         contentDescription = "Speak to Gabby",
-                        tint = if (uiState.isListening) RedPenalty else CyanPrimary,
+                        tint = if (uiState.isListening) RedPenalty else primaryColor,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -171,7 +506,7 @@ fun SessionLaunchScreen(
                         .height(50.dp),
                     shape = RoundedCornerShape(24.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = CyanPrimary,
+                        focusedBorderColor = primaryColor,
                         unfocusedBorderColor = Color.LightGray.copy(alpha = 0.5f),
                         focusedContainerColor = LightBackground,
                         unfocusedContainerColor = LightBackground
@@ -192,7 +527,7 @@ fun SessionLaunchScreen(
                     modifier = Modifier
                         .size(48.dp)
                         .background(
-                            if (inputText.isNotBlank() && !uiState.assistantTyping) CyanPrimary else Color.LightGray.copy(alpha = 0.3f),
+                            if (inputText.isNotBlank() && !uiState.assistantTyping) primaryColor else Color.LightGray.copy(alpha = 0.3f),
                             CircleShape
                         )
                 ) {
@@ -239,7 +574,7 @@ fun SessionLaunchScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         repeat(5) { index ->
-                            SpeechBar(index = index)
+                            SpeechBar(index = index, tint = primaryColor)
                         }
                     }
                 }
@@ -432,7 +767,7 @@ fun TypingIndicatorBubble() {
 }
 
 @Composable
-fun SpeechBar(index: Int) {
+fun SpeechBar(index: Int, tint: Color = CyanPrimary) {
     val infiniteTransition = rememberInfiniteTransition(label = "wave")
     val scaleY by infiniteTransition.animateFloat(
         initialValue = 0.2f,
@@ -448,7 +783,34 @@ fun SpeechBar(index: Int) {
         modifier = Modifier
             .width(6.dp)
             .height(60.dp)
-            .background(CyanPrimary, RoundedCornerShape(3.dp))
+            .background(tint, RoundedCornerShape(3.dp))
             .padding(vertical = (30 * (1f - scaleY)).dp)
     )
+}
+
+@Composable
+fun TypingDotRow() {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        repeat(3) { index ->
+            val infiniteTransition = rememberInfiniteTransition(label = "dots")
+            val dy by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = -6f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 300, delayMillis = index * 100, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "dot_dy"
+            )
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .offset(y = dy.dp)
+                    .background(CyanPrimary, CircleShape)
+            )
+        }
+    }
 }
