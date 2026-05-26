@@ -13,7 +13,7 @@ mobile_v1_router, web_v1_router = create_routers()
 def patient_refresh_token(request: HttpRequest, data: Mobile_RefreshTokenPayload):
     # implement token refresh logic here, e.g. verify refresh token, issue new access token
 
-    return Mobile_RefreshTokenResponse(message="Token refreshed successfully")
+    return Mobile_RefreshTokenResponse(access_token="example_access_token")
 
 
 # HEALTHCARE AUTHENTICATION

@@ -33,6 +33,22 @@ The following schemas are defined in `backend/users/schemas.py`:
 | `Mobile_RefreshTokenPayload` | Refresh-token request payload | `refresh_token: str` |
 | `Mobile_RefreshTokenResponse` | Refresh-token response payload | `access_token: str` |
 
+The following schemas are defined in `backend/gamification/schemas.py`:
+
+| Schema | Purpose | Fields |
+| --- | --- | --- |
+| `Web_GamificationResponse` | Gamification status for a patient | `total_regimen_days: int`, `current_streak: int`, `best_streak: int`, `heart_quota: int`, `penalty_history: list[Web_PenaltyEvent]` |
+
+The following schemas are defined in `backend/adherence/schemas.py`:
+
+| Schema | Purpose | Fields |
+| --- | --- | --- |
+| `Web_AdherenceMonthRequest` | Request payload for monthly adherence | `month: int`, `year: int` |
+| `Web_AdherenceMonthResponse` | Monthly adherence summary | `month: int`, `year: int`, `month_pdc: float`, `pdc_target: float`, `adherence_days: list[Web_AdherenceDayEntry]` |
+| `Web_AnomalousEntriesResponse` | List of anomalous adherence entries | `entries: list[Web_AnomalousEntry]` |
+| `Web_ReconcileAnomalyPayload` | Payload to reconcile anomalous entries | `entry_ids: list[int]`, `verification_method: str`, `reason: str` |
+| `Web_ReconcileAnomalyResponse` | Response after reconciling anomalies | `reconciled_count: int`, `updated_streak: int`, `updated_heart_quota: int`, `updated_pdc: float` |
+
 ## Web Endpoints
 
 ### `POST /api/v1/web/login/`
@@ -81,6 +97,51 @@ Notes:
 - Route config: `@web_v1_router.post("/logout/", response=Web_LogoutResponse)`
 - Uses router-level Django session auth.
 
+### `GET /api/v1/web/patient/{patient_id}/gamification/`
+
+Get gamification status for a patient.
+
+Response: `Web_GamificationResponse`
+
+Notes:
+
+- Route config: `@web_v1_router.get("/patient/{patient_id}/gamification/", response=Web_GamificationResponse)`
+- Returns summary fields such as `current_streak`, `heart_quota`, and `penalty_history`.
+
+### `GET /api/v1/web/patient/{patient_id}/adherence_month/`
+
+Get the adherence summary for a patient for a month.
+
+Response: `Web_AdherenceMonthResponse`
+
+Notes:
+
+- Route config: `@web_v1_router.get("/patient/{patient_id}/adherence_month/", response=Web_AdherenceMonthResponse)`
+- Returns `adherence_days` entries with status and optional `video_link`.
+
+### `GET /api/v1/web/patient/{patient_id}/anomalous_entries/`
+
+List anomalous adherence entries for a patient.
+
+Response: `Web_AnomalousEntriesResponse`
+
+Notes:
+
+- Route config: `@web_v1_router.get("/patient/{patient_id}/anomalous_entries/", response=Web_AnomalousEntriesResponse)`
+
+### `POST /api/v1/web/patient/{patient_id}/reconcile_anomalies/`
+
+Reconcile one or more anomalous adherence entries (mark verified, update streaks, etc.).
+
+Request: `Web_ReconcileAnomalyPayload`
+
+Response: `Web_ReconcileAnomalyResponse`
+
+Notes:
+
+- Route config: `@web_v1_router.post("/patient/{patient_id}/reconcile_anomalies/", response=Web_ReconcileAnomalyResponse)`
+- Request includes `entry_ids` and `verification_method`.
+
 ## Mobile Endpoints
 
 ### `POST /api/v1/mobile/refresh-token/`
@@ -106,6 +167,14 @@ Refresh a patient token using a refresh token.
 Notes:
 
 - Route config: `@mobile_v1_router.post("/refresh-token/", response=Mobile_RefreshTokenResponse)`
+
+## Route Registration Notes
+
+- All sub-routers are mounted under `/api/v1/` in [backend/Amping/urls.py](backend/Amping/urls.py) and wired in [backend/Amping/api.py](backend/Amping/api.py) via `api_v1.add_router(...)` for `mobile/` and `web/` groups.
+
+## Current Coverage
+
+Endpoints registered in `users`, `gamification`, and `adherence` apps are included above. Additional schema types exist (e.g. patient detail and create-patient schemas in `backend/users/schemas.py`) but corresponding routes are not currently exposed in the routers.
 
 ## Current Coverage
 

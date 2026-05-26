@@ -17,6 +17,7 @@ class Web_PDCTrendResponse(ApiSchema):
 
 class Web_AnomalousEntriesResponse(ApiSchema):
     class Web_AnomalousEntry(ApiSchema):
+        id: int
         date: date
         reason: str
 
