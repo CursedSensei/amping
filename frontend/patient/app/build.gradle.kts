@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    id("kotlin-kapt")
+    alias(libs.plugins.hilt)
 }
 
 android {
@@ -86,4 +88,9 @@ dependencies {
 
     // kotlinx JSON
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
+
+    // Dagger Hilt DI
+    implementation(libs.hilt.android)
+    kapt(libs.hilt.compiler)
+    implementation(libs.hilt.navigation.compose)
 }
