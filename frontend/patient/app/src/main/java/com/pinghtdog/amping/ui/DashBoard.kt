@@ -83,6 +83,8 @@ fun HomeDashboardScreen(onStartSession: () -> Unit) {
                 )
             }
 
+
+
             // Hero Header
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -125,6 +127,10 @@ fun HomeDashboardScreen(onStartSession: () -> Unit) {
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+
+            GabbyIdle(
+                modifier = Modifier.size(120.dp)
+            )
 
             // Streak Widget
             StreakCircularWidget()

@@ -19,6 +19,8 @@ import com.pinghtdog.amping.ui.VideoRecordingScreen
 import com.pinghtdog.amping.ui.VideoReviewScreen
 // Note: If you have a custom theme file, import it here (e.g., com.pinghtdog.amping.ui.theme.AmpingTheme)
 
+import com.pinghtdog.amping.ui.onboarding.onboardingNavGraph
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,7 +44,17 @@ fun AmpingAppNavigation() {
     val navController = rememberNavController()
 
     // The NavHost maps text "routes" to your actual Compose screens
-    NavHost(navController = navController, startDestination = "home") {
+    NavHost(navController = navController, startDestination = "onboarding") {
+
+        // 0. Onboarding Flow
+        onboardingNavGraph(
+            navController = navController,
+            onOnboardingComplete = {
+                navController.navigate("home") {
+                    popUpTo("onboarding") { inclusive = true }
+                }
+            }
+        )
 
         // 1. Home Dashboard
         composable("home") {
