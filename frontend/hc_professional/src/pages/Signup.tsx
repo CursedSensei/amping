@@ -1,15 +1,13 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 
 const ROLES = ['Doctor / Physician', 'Nurse', 'Barangay Health Worker (BHW)', 'Health Center Admin'];
 
-interface SignupProps {
-  onLogin: () => void;
-}
-
-export default function Signup({ onLogin }: SignupProps) {
+export default function Signup() {
   const navigate = useNavigate();
+  const { signup, isLoading } = useAuth();
   const [form, setForm] = useState({
     fullName: '',
     email: '',
@@ -21,7 +19,6 @@ export default function Signup({ onLogin }: SignupProps) {
   const [showPass, setShowPass] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -48,17 +45,20 @@ export default function Signup({ onLogin }: SignupProps) {
       return;
     }
 
-    // Simulate network call — no backend yet
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 1100));
-    setLoading(false);
-    setDone(true);
-
-    // Auto-login after signup
-    await new Promise((r) => setTimeout(r, 1400));
-    sessionStorage.setItem('hc_auth', 'true');
-    onLogin();
-    navigate('/', { replace: true });
+    try {
+      setDone(true);
+      await signup({
+        fullName: form.fullName,
+        email: form.email,
+        role: form.role,
+        employeeId: form.employeeId,
+        password: form.password,
+      });
+      navigate('/', { replace: true });
+    } catch {
+      setDone(false);
+      setError('Signup failed. Please try again.');
+    }
   };
 
   const passwordStrength = (p: string) => {
@@ -94,7 +94,9 @@ export default function Signup({ onLogin }: SignupProps) {
             <div className="flex flex-col items-center py-6 gap-4 text-center">
               <CheckCircle2 size={48} className="text-emerald-400" />
               <h2 className="text-xl font-bold text-white">Account Created!</h2>
-              <p className="text-blue-300 text-sm">Signing you in…</p>
+              <p className="text-blue-300 text-sm">
+                {isLoading ? 'Signing you in…' : 'Redirecting…'}
+              </p>
             </div>
           ) : (
             <>
@@ -239,10 +241,10 @@ export default function Signup({ onLogin }: SignupProps) {
                 {/* Submit */}
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={isLoading}
                   className="w-full bg-blue-500 hover:bg-blue-400 disabled:bg-blue-800 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-3 text-sm transition-colors flex items-center justify-center gap-2 mt-2"
                 >
-                  {loading ? (
+                  {isLoading ? (
                     <>
                       <Loader2 size={16} className="animate-spin" />
                       Creating account…

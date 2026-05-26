@@ -1,18 +1,15 @@
+import { AlertCircle, Eye, EyeOff, Loader2, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 
-interface LoginProps {
-  onLogin: () => void;
-}
-
-export default function Login({ onLogin }: LoginProps) {
+export default function Login() {
   const navigate = useNavigate();
+  const { login, isLoading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,15 +28,12 @@ export default function Login({ onLogin }: LoginProps) {
       return;
     }
 
-    // Simulate network call — no backend yet
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 900));
-    setLoading(false);
-
-    // Store a simple session flag
-    sessionStorage.setItem('hc_auth', 'true');
-    onLogin();
-    navigate('/', { replace: true });
+    try {
+      await login(email, password);
+      navigate('/', { replace: true });
+    } catch {
+      setError('Invalid credentials. Please try again.');
+    }
   };
 
   return (
@@ -115,10 +109,10 @@ export default function Login({ onLogin }: LoginProps) {
             {/* Submit */}
             <button
               type="submit"
-              disabled={loading}
+              disabled={isLoading}
               className="w-full bg-blue-500 hover:bg-blue-400 disabled:bg-blue-800 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-3 text-sm transition-colors flex items-center justify-center gap-2 mt-2"
             >
-              {loading ? (
+              {isLoading ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
                   Signing in…
