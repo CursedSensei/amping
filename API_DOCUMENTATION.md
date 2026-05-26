@@ -1,6 +1,6 @@
 # Amping API Documentation
 
-Initial API reference generated from `backend/Amping/urls.py` and the router wiring in `backend/Amping/api.py`.
+API reference generated from route wiring in `backend/Amping/urls.py`, `backend/Amping/api.py`, and endpoint definitions in `backend/users/api.py`.
 
 ## Base URL
 
@@ -10,11 +10,10 @@ All API routes are mounted under:
 
 ## Route Groups
 
-The following router groups are currently registered:
+The currently registered router groups are:
 
-- `/api/v1/healthcare/`
-- `/api/v1/patients/`
-- `/api/v1/auth/`
+- `/api/v1/mobile/`
+- `/api/v1/web/`
 
 ## Admin
 
@@ -22,72 +21,92 @@ The following router groups are currently registered:
 | --- | --- | --- |
 | GET | `/admin/` | Django admin site |
 
-## Authentication
+## Schema Index
 
-### `POST /api/v1/auth/login/`
+The following schemas are defined in `backend/users/schemas.py`:
+
+| Schema | Purpose | Fields |
+| --- | --- | --- |
+| `Web_LoginHealthProviderPayload` | Login request payload | `email: str`, `password: str` |
+| `Web_LoginHealthProviderResponse` | Login response payload | `message: str` |
+| `Web_LogoutResponse` | Logout response payload | `message: str` |
+| `Mobile_RefreshTokenPayload` | Refresh-token request payload | `refresh_token: str` |
+| `Mobile_RefreshTokenResponse` | Refresh-token response payload | `access_token: str` |
+
+## Web Endpoints
+
+### `POST /api/v1/web/login/`
 
 Authenticate a healthcare provider user.
 
-Request body:
+`Web_LoginHealthProviderPayload`
 
 ```json
 {
-	"email": "provider@example.com",
-	"password": "secret-password"
+  "email": "provider@example.com",
+  "password": "secret-password"
 }
 ```
 
-Response:
+`Web_LoginHealthProviderResponse`
 
 ```json
 {
-	"message": "Login successful"
+  "message": "Login successful"
 }
 ```
 
 Notes:
 
-- Requires Django authentication.
-- Returns `400` if the user is already authenticated.
-- Returns `401` if the credentials are invalid.
+- Route config: `@web_v1_router.post("/login/", auth=None, response=Web_LoginHealthProviderResponse)`
+- Returns `400` if already authenticated.
+- Returns `401` if credentials are invalid.
 
-### `POST /api/v1/auth/logout/`
+### `POST /api/v1/web/logout/`
 
 Log out the currently authenticated healthcare provider user.
 
-Response:
+No request payload schema.
+
+`Web_LogoutResponse`
 
 ```json
 {
-	"message": "Logged out successfully"
+  "message": "Logged out successfully"
 }
 ```
 
 Notes:
 
-- Requires an authenticated session.
-- Returns `401` if the request is not authenticated.
+- Route config: `@web_v1_router.post("/logout/", response=Web_LogoutResponse)`
+- Uses router-level Django session auth.
 
-### `POST /api/v1/auth/refresh-token/`
+## Mobile Endpoints
+
+### `POST /api/v1/mobile/refresh-token/`
 
 Refresh a patient token using a refresh token.
 
-Request body:
+`Mobile_RefreshTokenPayload`
 
 ```json
 {
-	"refresh_token": "current-refresh-token"
+  "refresh_token": "current-refresh-token"
 }
 ```
 
-Response:
+`Mobile_RefreshTokenResponse`
 
 ```json
 {
-	"message": "Token refreshed successfully"
+  "access_token": "new-access-token"
 }
 ```
 
-## Not Yet Implemented
+Notes:
 
-The `healthcare` and `patients` router groups are mounted, but no endpoints are currently defined in them.
+- Route config: `@mobile_v1_router.post("/refresh-token/", response=Mobile_RefreshTokenResponse)`
+
+## Current Coverage
+
+No other endpoints are currently defined outside the three authentication endpoints above.

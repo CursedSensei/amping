@@ -1,24 +1,35 @@
-from Amping.schemas import ApiSchema, BaseResponse
+from Amping.schemas import ApiSchema
 
-class Auth_CreatePatientPayload(ApiSchema):
+class Web_CreatePatientPayload(ApiSchema):
     name: str
     email: str
     contact: str
     age: int
 
-class Auth_CreatePatientResponse(BaseResponse):
-    pass
+class Web_CreatePatientResponse(ApiSchema):
+    message: str
 
-class Auth_LoginHealthProviderPayload(ApiSchema):
+class Web_LoginHealthProviderPayload(ApiSchema):
     email: str
     password: str
 
-class Auth_RefreshTokenPayload(ApiSchema):
+class Web_LogoutResponse(ApiSchema):
+    message: str
+
+class Web_LoginHealthProviderResponse(ApiSchema):
+    message: str
+
+class Mobile_RefreshTokenPayload(ApiSchema):
     refresh_token: str
 
+class Mobile_RefreshTokenResponse(ApiSchema):
+    access_token: str
+
 __ALL__ = [
-    "Auth_CreatePatientPayload",
-    "Auth_CreatePatientResponse",
-    "Auth_LoginHealthProviderPayload",
-    "Auth_RefreshTokenPayload"
+    "Web_CreatePatientPayload",
+    "Web_CreatePatientResponse",
+    "Web_LoginHealthProviderPayload",
+    "Web_LoginHealthProviderResponse",
+    "Mobile_RefreshTokenPayload",
+    "Mobile_RefreshTokenResponse"
 ]
