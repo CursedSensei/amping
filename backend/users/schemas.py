@@ -1,21 +1,24 @@
-from ninja import Schema
+from Amping.schemas import ApiSchema, BaseResponse
 
-class CreatePatientPayload(Schema):
+class Auth_CreatePatientPayload(ApiSchema):
     name: str
     email: str
     contact: str
     age: int
-    age_group: str
 
-class LoginHealthProviderPayload(Schema):
+class Auth_CreatePatientResponse(BaseResponse):
+    pass
+
+class Auth_LoginHealthProviderPayload(ApiSchema):
     email: str
     password: str
 
-class RefreshTokenPayload(Schema):
+class Auth_RefreshTokenPayload(ApiSchema):
     refresh_token: str
 
 __ALL__ = [
-    "CreatePatientPayload",
-    "LoginHealthProviderPayload",
-    "RefreshTokenPayload"
+    "Auth_CreatePatientPayload",
+    "Auth_CreatePatientResponse",
+    "Auth_LoginHealthProviderPayload",
+    "Auth_RefreshTokenPayload"
 ]

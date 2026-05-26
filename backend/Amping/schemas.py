@@ -1,6 +1,12 @@
 from ninja import Schema
+from pydantic import ConfigDict
 
-class BaseResponse(Schema):
+class ApiSchema(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+
+
+class BaseResponse(ApiSchema):
     message: str
 
 __ALL__ = [

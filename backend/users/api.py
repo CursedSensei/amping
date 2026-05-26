@@ -3,7 +3,7 @@ from ninja.security import django_auth
 from ninja.errors import HttpError
 from django.views.decorators.csrf import csrf_exempt
 from Amping.schemas import BaseResponse
-from users.schemas import LoginHealthProviderPayload, RefreshTokenPayload
+from users.schemas import Auth_LoginHealthProviderPayload, Auth_RefreshTokenPayload
 
 healthcare_router = Router()
 patient_router = Router()
@@ -16,7 +16,7 @@ auth_router = Router()
 
 @auth_router.post("/refresh-token/", )
 @csrf_exempt
-def patient_refresh_token(request, data: RefreshTokenPayload):
+def patient_refresh_token(request, data: Auth_RefreshTokenPayload):
     # implement token refresh logic here, e.g. verify refresh token, issue new access token
 
     return BaseResponse(message="Token refreshed successfully")
@@ -25,7 +25,7 @@ def patient_refresh_token(request, data: RefreshTokenPayload):
 # HEALTHCARE AUTHENTICATION
 
 @auth_router.post("/login/", auth=django_auth, response=BaseResponse)
-def healthcare_login(request, data: LoginHealthProviderPayload):
+def healthcare_login(request, data: Auth_LoginHealthProviderPayload):
     if request.user.is_authenticated:
         raise HttpError(400, "Already logged in")
 
