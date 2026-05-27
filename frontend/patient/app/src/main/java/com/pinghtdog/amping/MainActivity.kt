@@ -24,11 +24,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.pinghtdog.amping.ui.HomeDashboardScreen
+import com.pinghtdog.amping.ui.DashBoard
 import com.pinghtdog.amping.ui.session.SessionFlowContainer
+import com.pinghtdog.amping.ui.onboarding.OnboardingScreen
+
 // Note: If you have a custom theme file, import it here (e.g., com.pinghtdog.amping.ui.theme.AmpingTheme)
 
-import com.pinghtdog.amping.ui.onboarding.onboardingNavGraph
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -61,19 +62,21 @@ fun AmpingAppNavigation() {
         // The NavHost maps text "routes" to your actual Compose screens
         NavHost(navController = navController, startDestination = "onboarding") {
 
-            // 0. Onboarding Flow
-            onboardingNavGraph(
-                navController = navController,
+        // 0. Onboarding Flow
+        composable("onboarding") {
+            OnboardingScreen(
                 onOnboardingComplete = {
+                    // Once they finish onboarding, send them to Home and prevent going back
                     navController.navigate("home") {
                         popUpTo("onboarding") { inclusive = true }
                     }
                 }
             )
+        }
 
             // 1. Home Dashboard
             composable("home") {
-                HomeDashboardScreen(
+                DashBoard(
                     onStartSession = { navController.navigate("session_launch") }
                 )
             }
@@ -90,11 +93,11 @@ fun AmpingAppNavigation() {
             }
         }
 
-        // Show Skip Onboarding button if we are in the onboarding flow, 
+        // Show Skip Onboarding button if we are in the onboarding flow,
         // but not on Splash (ob01) or Welcome Complete (ob15)
-        if (currentRoute != null && currentRoute.startsWith("ob") && 
+        if (currentRoute != null && currentRoute.startsWith("ob") &&
             currentRoute != "ob01_splash" && currentRoute != "ob15_welcome_complete") {
-            
+
             TextButton(
                 onClick = {
                     navController.navigate("home") {

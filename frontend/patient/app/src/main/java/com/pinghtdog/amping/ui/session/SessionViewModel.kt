@@ -291,6 +291,7 @@ class SessionViewModel @Inject constructor(
             val response = gabbyRepository.getChatResponse(currentMessages, _uiState.value.activeProfile)
             handleInferenceResult(response)
         } catch (e: Exception) {
+            android.util.Log.e("GabbyMock", "Error running mock chat flow", e)
             _uiState.update {
                 it.copy(
                     assistantTyping = false,
@@ -350,6 +351,7 @@ class SessionViewModel @Inject constructor(
             }
         } catch (e: Exception) {
             val errorMessage = e.localizedMessage ?: "Failed to reach Gabby."
+            android.util.Log.e("GabbyNetwork", "Error running network chat flow: $errorMessage", e)
             _uiState.update {
                 it.copy(
                     assistantTyping = false,
@@ -596,24 +598,59 @@ class SessionViewModel @Inject constructor(
         _uiState.update { it.copy(currentPhase = SessionPhase.VDOT_CAPTURE) }
     }
 
-    fun completeRecording() {
-        _uiState.update { it.copy(currentPhase = SessionPhase.VDOT_REVIEW) }
+    fun completeRecording(filePath: String) {
+        _uiState.update { 
+            it.copy(
+                recordedVideoPath = filePath,
+                currentPhase = SessionPhase.VDOT_REVIEW
+            )
+        }
     }
 
     fun uploadVideo() {
         if (_uiState.value.isUploading) return
+        val videoPath = _uiState.value.recordedVideoPath
+        val isNetworkMode = _uiState.value.isNetworkMode
+
         viewModelScope.launch {
-            _uiState.update { it.copy(isUploading = true, uploadProgress = 0f) }
-            for (i in 1..10) {
-                delay(250)
-                _uiState.update { it.copy(uploadProgress = i * 0.1f) }
-            }
-            _uiState.update {
-                it.copy(
-                    isUploading = false,
-                    currentPhase = SessionPhase.SUCCESS,
-                    streakCount = it.streakCount + 1
-                )
+            _uiState.update { it.copy(isUploading = true, uploadProgress = 0.1f) }
+            
+            try {
+                if (isNetworkMode && videoPath != null) {
+                    val file = java.io.File(videoPath)
+                    if (file.exists()) {
+                        _uiState.update { it.copy(uploadProgress = 0.3f) }
+                        val bytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            file.readBytes()
+                        }
+                        _uiState.update { it.copy(uploadProgress = 0.6f) }
+                        gabbyRepository.uploadVideo(bytes)
+                    }
+                } else {
+                    for (i in 2..8) {
+                        delay(200)
+                        _uiState.update { it.copy(uploadProgress = i * 0.1f) }
+                    }
+                }
+                
+                _uiState.update { it.copy(uploadProgress = 1.0f) }
+                delay(200)
+                
+                _uiState.update {
+                    it.copy(
+                        isUploading = false,
+                        currentPhase = SessionPhase.SUCCESS,
+                        streakCount = it.streakCount + 1
+                    )
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SessionViewModel", "Upload failed", e)
+                _uiState.update {
+                    it.copy(
+                        isUploading = false,
+                        networkError = "Video upload failed: ${e.localizedMessage ?: "Unknown server error"}"
+                    )
+                }
             }
         }
     }

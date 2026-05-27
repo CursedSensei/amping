@@ -24,5 +24,6 @@ data class SessionUiState(
     val currentSubtitleText: String = "",
     val isTtsSpeaking: Boolean = false,
     val pendingToolCallName: String? = null,
-    val pendingToolCallArgs: Map<String, String> = emptyMap()
+    val pendingToolCallArgs: Map<String, String> = emptyMap(),
+    val recordedVideoPath: String? = null
 )

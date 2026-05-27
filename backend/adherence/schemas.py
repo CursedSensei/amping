@@ -49,7 +49,7 @@ class Web_ReconcileAnomalyPayload(ApiSchema):
     entries (e.g. mark a technical-miss as provider-verified).
     """
     entry_ids: list[int]
-    verification_method: str
+    verification_method: AdherenceStatusEnum
     reason: str
 
 class Web_ReconcileAnomalyResponse(ApiSchema):
@@ -59,11 +59,36 @@ class Web_ReconcileAnomalyResponse(ApiSchema):
     updated_heart_quota: int
     updated_pdc: float
 
+
+class Mobile_WeeklyAdherenceResponse(ApiSchema):
+    class Mobile_AdherenceDayEntry(ApiSchema):
+        date: date
+        status: AdherenceStatusEnum
+
+    week_start: date
+    week_end: date
+    adherence_days: list[Mobile_AdherenceDayEntry]
+
+class Mobile_UploadSymtomsPayload(ApiSchema):
+    date: date
+    symptoms: list[str]
+
+class Mobile_UploadSymtomsResponse(ApiSchema):
+    message: str
+
+class Mobile_GetAdherenceVideoEndpointResponse(ApiSchema):
+    adherence_day_id: int
+    video_endpoint: str
+
 __ALL__ = [
     "Web_PDCTrendResponse",
     "Web_AnomalousEntriesResponse",
     "Web_AdherenceMonthRequest",
     "Web_AdherenceMonthResponse",
     "Web_ReconcileAnomalyPayload",
-    "Web_ReconcileAnomalyResponse"
+    "Web_ReconcileAnomalyResponse",
+    "Mobile_WeeklyAdherenceResponse",
+    "Mobile_UploadSymtomsResponse",
+    "Mobile_GetAdherenceVideoEndpointResponse",
+    "Mobile_UploadSymtomsPayload"
 ]

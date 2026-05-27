@@ -17,8 +17,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 from .api import api_v1
+from users.views import fetch_chat_session_token
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/v1/', api_v1.urls),
+    path('api/chat/session', fetch_chat_session_token),
+    path('api/chat/session/', fetch_chat_session_token),
 ]

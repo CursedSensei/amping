@@ -12,5 +12,5 @@ import kotlinx.serialization.encoding.*
 
 @Serializable
 data class WebCreatePatientResponse (
-    val message: String
+    val id: Long
 )

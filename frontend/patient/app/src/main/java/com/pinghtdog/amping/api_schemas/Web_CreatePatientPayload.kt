@@ -12,8 +12,26 @@ import kotlinx.serialization.encoding.*
 
 @Serializable
 data class WebCreatePatientPayload (
-    val age: Long,
+    val birthyear: Long,
     val contact: String,
     val email: String,
-    val name: String
+    val firstname: String,
+    val guardians: List<WebPatientGuardianEntry>,
+    val id: Long,
+    val lastname: String,
+
+    @SerialName("regimen_start")
+    val regimenStart: String,
+
+    @SerialName("total_days")
+    val totalDays: Long
+)
+
+@Serializable
+data class WebPatientGuardianEntry (
+    val contact: String,
+    val email: String,
+    val firstname: String,
+    val id: Long,
+    val lastname: String
 )

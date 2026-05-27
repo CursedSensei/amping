@@ -22,5 +22,13 @@ data class WebReconcileAnomalyPayload (
     val reason: String,
 
     @SerialName("verification_method")
-    val verificationMethod: String
+    val verificationMethod: AdherenceStatusEnum
 )
+
+@Serializable
+enum class AdherenceStatusEnum(val value: String) {
+    @SerialName("app_recorded") AppRecorded("app_recorded"),
+    @SerialName("provider_reconciled") ProviderReconciled("provider_reconciled"),
+    @SerialName("technical_miss") TechnicalMiss("technical_miss"),
+    @SerialName("unverified_absence") UnverifiedAbsence("unverified_absence");
+}
