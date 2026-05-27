@@ -1,13 +1,16 @@
+from datetime import date
+
 from ninja.errors import HttpError
 from django.contrib.auth import authenticate, login, logout
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from django.db import IntegrityError, transaction
 from Amping.utils import create_routers
+from adherence.models import AdherenceDayRecord, AdherenceStatusEnum, SymptomRecord
 from gamification.models import PatientStats
 from .utils import get_random_string, getPatientUserByToken
 from .schemas import Mobile_HealthCareProviderProfileResponse, Mobile_PatientProfileResponse, Mobile_RefreshTokenResponse, Web_CreatePatientPayload, Web_CreatePatientResponse, Web_GetAllPatientsResponse, Web_LoginHealthProviderPayload, Mobile_RefreshTokenPayload, Web_LoginHealthProviderResponse, Web_LogoutResponse, Web_PatientDetailResponse, Web_PatientGuardianEntry
-from .models import PatientGuardian, PatientUser, Token
+from .models import HealthCareProviderUser, PatientGuardian, PatientUser, Token
 from .apps import logger
 
 mobile_v1_router, web_v1_router = create_routers()
@@ -85,19 +88,27 @@ def create_patient(request: HttpRequest, data: Web_CreatePatientPayload):
         email=data.email,
         contact=data.contact,
         birthyear=data.birthyear,
-        healthcare_provider=request.user
+        healthcare_provider=request.user,
+        refresh_token=get_random_string(255)
     )
 
     try:
         with transaction.atomic():
-            patient_user.save()
+            while True:
+                try:
+                    patient_user.save()
+                    break
+                except IntegrityError:
+                    logger.error("Failed to create patient user with email %s, retrying...", data.email)
+                    patient_user.refresh_token = get_random_string(255)
+
             for guardian_data in data.guardians:
                 PatientGuardian(
                     patient=patient_user,
                     firstname=guardian_data.firstname,
                     lastname=guardian_data.lastname,
                     email=guardian_data.email,
-                    contact=guardian_data.contact
+                    contact=guardian_data.contact,
                 ).save()
 
             PatientStats(
@@ -105,7 +116,8 @@ def create_patient(request: HttpRequest, data: Web_CreatePatientPayload):
                 total_regimen_days=data.total_days,
                 current_streak=0,
                 best_streak=0,
-                heart_quota=3
+                heart_quota=3,
+                regimen_start_date=data.regimen_start
             ).save()
     except IntegrityError as e:
         logger.error("Failed to create patient user: %s", str(e))

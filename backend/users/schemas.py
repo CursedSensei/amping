@@ -2,7 +2,6 @@ from Amping.schemas import ApiSchema
 from datetime import date
 
 class Web_PatientGuardianEntry(ApiSchema):
-    id: int
     firstname: str
     lastname: str
     email: str
@@ -11,7 +10,6 @@ class Web_PatientGuardianEntry(ApiSchema):
 
 
 class Web_CreatePatientPayload(ApiSchema):
-    id: int
     firstname: str
     lastname: str
     email: str
@@ -54,13 +52,16 @@ class Web_GetAllPatientsResponse(ApiSchema):
     patients: list[Web_PatientEntry]
 
 class Web_PatientDetailResponse(ApiSchema):
+    class Web_PatientGuardianDetailEntry(Web_PatientGuardianEntry):
+        id: int
+
     id: int
     firstname: str
     lastname: str
     email: str
     contact: str
     birthyear: int
-    guardians: list[Web_PatientGuardianEntry]
+    guardians: list[Web_PatientGuardianDetailEntry]
 
     regimen_start: date
     current_day: int
