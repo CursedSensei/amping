@@ -35,7 +35,7 @@ interface GabbyRepository {
     fun streamChatResponse(token: String, modalUrl: String, prompt: String): Flow<ChatStreamChunk>
     
     // Handshake to request credentials / session token
-    suspend fun fetchSessionToken(userId: String): SessionTokenResponse
+    suspend fun fetchSessionToken(userId: String, motivation: String? = null): SessionTokenResponse
 
     // Upload video bytes to backend
     suspend fun uploadVideo(videoBytes: ByteArray): String
@@ -56,14 +56,14 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
         }
     }
 
-    override suspend fun fetchSessionToken(userId: String): SessionTokenResponse {
+    override suspend fun fetchSessionToken(userId: String, motivation: String?): SessionTokenResponse {
         try {
             // Emulates connecting to the webserver auth gateway.
             // Uses standard local emulator/development address.
             val responseText = httpClient.post {
                 url("http://10.0.2.2:3000/api/chat/session")
                 contentType(ContentType.Application.Json)
-                setBody(mapOf("userId" to userId))
+                setBody(mapOf("userId" to userId, "motivation" to motivation))
             }.bodyAsText()
             
             return jsonParser.decodeFromString<SessionTokenResponse>(responseText)
@@ -129,6 +129,21 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
         delay(1200)
 
         val lastUserMessage = messages.lastOrNull { it.role == "user" }?.content?.lowercase() ?: ""
+
+        val isUploadComplete = lastUserMessage.contains("vdot upload complete") || lastUserMessage.contains("upload complete")
+        if (isUploadComplete) {
+            val motivationStr = if (lastUserMessage.contains("motivation:")) {
+                messages.lastOrNull { it.role == "user" }?.content?.substringAfter("Motivation:")?.trim() ?: ""
+            } else ""
+            val motivationText = if (motivationStr.isNotEmpty()) " because of '$motivationStr'" else ""
+            val transitionText = when (profile) {
+                "youth" -> "Awesome job, champion! You successfully completed today's ingestion and uploaded the VDOT video. Remember the reason why you are taking this medication$motivationText! Keep that streak alive!"
+                "senior" -> "Splendid work, Lola. You have successfully completed your daily medication check-in and video upload. Remember the reason why you are taking this medication$motivationText. Your health is so precious, dear."
+                else -> "Ingestion verification video uploaded successfully. Remember the reason why you are taking this medication$motivationText. Compliance log updated."
+            }
+            val assistantText = "$transitionText\n\n<tool_call> {\"name\": \"transition_to_success\"} </tool_call>"
+            return parseResponse(assistantText)
+        }
 
         val crisisKeywords = listOf(
             "kill myself", "harm myself", "hurt myself", "suicide", "end my life", 
@@ -200,13 +215,24 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
 
         } else {
             val duration = if (profile == "senior") "20" else "15"
-            val transitionText = when (profile) {
-                "youth" -> "Awesome! Opening the secure VDOT camera now. Keep your face and the pill in the frame!"
-                "senior" -> "Splendid, dear! Activating the camera now. Take your time."
-                else -> "Excellent. Activating the secure VDOT filming session now. Please position the camera so your swallow is clearly visible."
-            }
+            val isConfirmed = listOf("yes", "start", "ready", "confirm", "ok", "sure", "now", "begin", "go", "video", "camera", "ingest", "button", "pill").any { lastUserMessage.contains(it) } &&
+                    !listOf("not yet", "no", "wait", "hold", "stop", "cancel", "later").any { lastUserMessage.contains(it) }
 
-            val assistantText = "$transitionText\n\n<tool_call> {\"name\": \"trigger_vdot\", \"arguments\": {\"duration_seconds\": $duration}} </tool_call>"
+            val assistantText = if (isConfirmed) {
+                val transitionText = when (profile) {
+                    "youth" -> "Awesome! Opening the secure VDOT camera now. Keep your face and the pill in the frame!"
+                    "senior" -> "Splendid, dear! Activating the camera now. Take your time."
+                    else -> "Excellent. Activating the secure VDOT filming session now. Please position the camera so your swallow is clearly visible."
+                }
+                "$transitionText\n\n<tool_call> {\"name\": \"trigger_vdot\", \"arguments\": {\"duration_seconds\": $duration}} </tool_call>"
+            } else {
+                val standByText = when (profile) {
+                    "youth" -> "No worries, buddy! Take your time. Just say the word or tap when you're ready to show me that pill!"
+                    "senior" -> "Of course, Lola. Do not rush. Let me know when you feel prepared to take your medication."
+                    else -> "Understood. Remaining on standby. Please confirm when you are ready to proceed with the secure VDOT ingestion."
+                }
+                standByText
+            }
             return parseResponse(assistantText)
         }
     }

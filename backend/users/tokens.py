@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from django.conf import settings
 import os
 
-def generate_modal_access_token(patient_user) -> str:
+def generate_modal_access_token(patient_user, motivation: str = "") -> str:
     """
     Generates a short-lived signed JWT session token for the PatientUser client
     to communicate directly with the serverless Modal GPU backend.
@@ -25,6 +25,7 @@ def generate_modal_access_token(patient_user) -> str:
         "profile": profile,
         "current_phase": "empathy", # Always start check-in at Empathy Phase
         "streak": getattr(patient_user, "current_streak", 5), # Fallback to default streak
+        "motivation": motivation,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=15),
         "iat": datetime.now(timezone.utc),
         "iss": "https://amping-backend.com"
