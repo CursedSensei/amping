@@ -1,20 +1,31 @@
 package com.pinghtdog.amping.data.repository
 
+import android.content.Context
 import com.pinghtdog.amping.data.model.Message
 import com.pinghtdog.amping.data.model.ToolCall
 import com.pinghtdog.amping.data.model.SessionTokenResponse
 import com.pinghtdog.amping.data.model.ChatStreamChunk
+import com.pinghtdog.amping.api_schemas.*
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocketSession
+import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.request.url
+import io.ktor.client.request.header
+import io.ktor.client.request.forms.submitFormWithBinaryData
+import io.ktor.client.request.forms.formData
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
+import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
@@ -39,6 +50,16 @@ interface GabbyRepository {
 
     // Upload video bytes to backend
     suspend fun uploadVideo(videoBytes: ByteArray): String
+
+    // --- PRODUCTION MOBILE API ENDPOINTS ---
+    suspend fun refreshAccessToken(context: Context): String
+    suspend fun getPatientProfile(context: Context): MobilePatientProfileResponse
+    suspend fun getHealthcareProfile(context: Context): MobileHealthCareProviderProfileResponse
+    suspend fun getStats(context: Context): MobileStatsResponse
+    suspend fun getWeeklyAdherence(context: Context): MobileWeeklyAdherenceResponse
+    suspend fun uploadSymptoms(context: Context, date: String, symptoms: List<String>): MobileUploadSymtomsResponse
+    suspend fun getAdherenceVideoEndpoint(context: Context): MobileGetAdherenceVideoEndpointResponse
+    suspend fun uploadVideoToProduction(context: Context, videoBytes: ByteArray): String
 }
 
 @Singleton
@@ -56,22 +77,187 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
         }
     }
 
+    private suspend fun getValidAccessToken(context: Context): String {
+        val cached = TokenManager.getAccessToken(context)
+        if (cached != null) return cached
+        return refreshAccessToken(context)
+    }
+
+    private suspend inline fun <reified T> executeAuthenticatedRequest(
+        context: Context,
+        crossinline block: suspend HttpClient.(accessToken: String) -> HttpResponse
+    ): T {
+        var token = getValidAccessToken(context)
+        var response = try {
+            httpClient.block(token)
+        } catch (e: ClientRequestException) {
+            if (e.response.status.value == 401) {
+                // Token might be expired, refresh it and retry
+                token = refreshAccessToken(context)
+                httpClient.block(token)
+            } else {
+                throw e
+            }
+        }
+        
+        if (response.status.value == 401) {
+            token = refreshAccessToken(context)
+            response = httpClient.block(token)
+        }
+        
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            throw IOException("API Error (${response.status.value}): $text")
+        }
+        
+        return jsonParser.decodeFromString(text)
+    }
+
+    override suspend fun refreshAccessToken(context: Context): String {
+        val refreshToken = TokenManager.getRefreshToken(context)
+            ?: throw IOException("No refresh token stored on this device. Please seed refresh_token.txt.")
+        
+        try {
+            val responseText = httpClient.post {
+                url("https://amping.onrender.com/api/v1/mobile/refresh-token/")
+                contentType(ContentType.Application.Json)
+                setBody(MobileRefreshTokenPayload(refreshToken))
+            }.bodyAsText()
+            
+            val payload = jsonParser.decodeFromString<MobileRefreshTokenResponse>(responseText)
+            TokenManager.saveAccessToken(context, payload.accessToken)
+            return payload.accessToken
+        } catch (e: Exception) {
+            throw IOException("Token rotation failed: Failed to exchange refresh token for an access token with backend. (${e.localizedMessage ?: "Network error"})", e)
+        }
+    }
+
+    override suspend fun getPatientProfile(context: Context): MobilePatientProfileResponse {
+        return executeAuthenticatedRequest(context) { token ->
+            get("https://amping.onrender.com/api/v1/mobile/profile/") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+        }
+    }
+
+    override suspend fun getHealthcareProfile(context: Context): MobileHealthCareProviderProfileResponse {
+        return executeAuthenticatedRequest(context) { token ->
+            get("https://amping.onrender.com/api/v1/mobile/healthcare-profile/") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+        }
+    }
+
+    override suspend fun getStats(context: Context): MobileStatsResponse {
+        return executeAuthenticatedRequest(context) { token ->
+            get("https://amping.onrender.com/api/v1/mobile/stats/") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+        }
+    }
+
+    override suspend fun getWeeklyAdherence(context: Context): MobileWeeklyAdherenceResponse {
+        return executeAuthenticatedRequest(context) { token ->
+            get("https://amping.onrender.com/api/v1/mobile/weekly_adherence/") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+        }
+    }
+
+    override suspend fun uploadSymptoms(context: Context, date: String, symptoms: List<String>): MobileUploadSymtomsResponse {
+        return executeAuthenticatedRequest(context) { token ->
+            post("https://amping.onrender.com/api/v1/mobile/upload_symptoms/") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+                contentType(ContentType.Application.Json)
+                setBody(MobileUploadSymtomsPayload(date = date, symptoms = symptoms))
+            }
+        }
+    }
+
+    override suspend fun getAdherenceVideoEndpoint(context: Context): MobileGetAdherenceVideoEndpointResponse {
+        return executeAuthenticatedRequest(context) { token ->
+            get("https://amping.onrender.com/api/v1/mobile/adherence_video_endpoint/") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+        }
+    }
+
+    override suspend fun uploadVideoToProduction(context: Context, videoBytes: ByteArray): String {
+        // 1. Handshake to retrieve signed upload video endpoint URL
+        val endpointResponse = getAdherenceVideoEndpoint(context)
+        val videoEndpoint = endpointResponse.videoEndpoint
+
+        // 2. Perform multipart form binary stream upload to this resolved production endpoint
+        var token = getValidAccessToken(context)
+        var response = try {
+            httpClient.submitFormWithBinaryData(
+                url = videoEndpoint,
+                formData = formData {
+                    append("video", videoBytes, Headers.build {
+                        append(HttpHeaders.ContentType, "video/mp4")
+                        append(HttpHeaders.ContentDisposition, "filename=\"vdot.mp4\"")
+                    })
+                }
+            ) {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+        } catch (e: ClientRequestException) {
+            if (e.response.status.value == 401) {
+                token = refreshAccessToken(context)
+                httpClient.submitFormWithBinaryData(
+                    url = videoEndpoint,
+                    formData = formData {
+                        append("video", videoBytes, Headers.build {
+                            append(HttpHeaders.ContentType, "video/mp4")
+                            append(HttpHeaders.ContentDisposition, "filename=\"vdot.mp4\"")
+                        })
+                    }
+                ) {
+                    header(HttpHeaders.Authorization, "Bearer $token")
+                }
+            } else {
+                throw e
+            }
+        }
+
+        if (response.status.value == 401) {
+            token = refreshAccessToken(context)
+            response = httpClient.submitFormWithBinaryData(
+                url = videoEndpoint,
+                formData = formData {
+                    append("video", videoBytes, Headers.build {
+                        append(HttpHeaders.ContentType, "video/mp4")
+                        append(HttpHeaders.ContentDisposition, "filename=\"vdot.mp4\"")
+                    })
+                }
+            ) {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+        }
+
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            throw IOException("Failed to upload production video: (${response.status.value}) $text")
+        }
+
+        return text
+    }
+
     override suspend fun fetchSessionToken(userId: String, motivation: String?): SessionTokenResponse {
         try {
-            // Emulates connecting to the webserver auth gateway.
-            // Uses standard local emulator/development address.
             val responseText = httpClient.post {
-                url("http://10.0.2.2:3000/api/chat/session")
+                url("https://amping.onrender.com/api/chat/session/")
                 contentType(ContentType.Application.Json)
                 setBody(mapOf("userId" to userId, "motivation" to motivation))
             }.bodyAsText()
             
             return jsonParser.decodeFromString<SessionTokenResponse>(responseText)
         } catch (e: Exception) {
-            throw IOException("Network error: Failed to connect to server gateway. Please ensure your webserver is running locally. (${e.localizedMessage ?: "Connection refused"})", e)
+            throw IOException("Network error: Failed to connect to server gateway at https://amping.onrender.com. (${e.localizedMessage ?: "Connection refused"})", e)
         }
     }
 
+    // Keep legacy support for uploadVideo byte streaming (local emulator fallback)
     override suspend fun uploadVideo(videoBytes: ByteArray): String {
         try {
             val responseText = httpClient.post {
@@ -81,7 +267,7 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
             }.bodyAsText()
             return responseText
         } catch (e: Exception) {
-            throw IOException("Failed to upload VDOT video to server: ${e.localizedMessage}", e)
+            throw IOException("Failed to upload VDOT video to local server: ${e.localizedMessage}", e)
         }
     }
 
