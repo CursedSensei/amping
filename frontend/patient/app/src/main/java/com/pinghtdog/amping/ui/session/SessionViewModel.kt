@@ -291,6 +291,7 @@ class SessionViewModel @Inject constructor(
             val response = gabbyRepository.getChatResponse(currentMessages, _uiState.value.activeProfile)
             handleInferenceResult(response)
         } catch (e: Exception) {
+            android.util.Log.e("GabbyMock", "Error running mock chat flow", e)
             _uiState.update {
                 it.copy(
                     assistantTyping = false,
@@ -350,6 +351,7 @@ class SessionViewModel @Inject constructor(
             }
         } catch (e: Exception) {
             val errorMessage = e.localizedMessage ?: "Failed to reach Gabby."
+            android.util.Log.e("GabbyNetwork", "Error running network chat flow: $errorMessage", e)
             _uiState.update {
                 it.copy(
                     assistantTyping = false,
