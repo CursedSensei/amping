@@ -4,6 +4,7 @@ export interface WebPatientDetailResponse {
     current_day:      number;
     email:            string;
     firstname:        string;
+    guardians:        WebPatientGuardianEntry[];
     id:               number;
     lastname:         string;
     month3_protected: boolean;
@@ -11,4 +12,12 @@ export interface WebPatientDetailResponse {
     pdc_target:       number;
     regimen_start:    Date;
     total_days:       number;
+}
+
+export interface WebPatientGuardianEntry {
+    contact:   string;
+    email:     string;
+    firstname: string;
+    id:        number;
+    lastname:  string;
 }

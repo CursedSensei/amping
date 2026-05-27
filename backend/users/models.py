@@ -3,12 +3,6 @@ from django.contrib.auth.models import AbstractBaseUser, AbstractUser
 
 from .managers import HealthCareProviderUserManager
 
-class AgeGroup(models.TextChoices):
-    CHILD = 'child', 'Child'
-    ADULT = 'adult', 'Adult'
-    SENIOR = 'senior', 'Senior'
-
-
 class BaseUser(models.Model):
     id = models.AutoField(primary_key=True)
     firstname = models.CharField(max_length=255)
@@ -20,6 +14,7 @@ class BaseUser(models.Model):
 class HealthCareProviderUser(BaseUser, AbstractUser):
     username = None
     email = models.EmailField(unique=True)
+    clinic = models.CharField(max_length=255, blank=True)
 
     objects = HealthCareProviderUserManager()
 
@@ -30,8 +25,7 @@ class PatientUser(BaseUser):
     healthcare_provider = models.ForeignKey(HealthCareProviderUser, on_delete=models.CASCADE, related_name='patients')
 
     email = models.EmailField(blank=True)
-    age = models.IntegerField()
-    age_group = models.CharField(max_length=10, choices=AgeGroup.choices, default=AgeGroup.ADULT)
+    birthyear = models.IntegerField()
 
     refresh_token = models.CharField(max_length=255, unique=True)
 

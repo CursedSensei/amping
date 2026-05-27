@@ -22,7 +22,10 @@ data class WebGamificationResponse (
     val heartQuota: Long,
 
     @SerialName("penalty_history")
-    val penaltyHistory: List<WebPenaltyEvent>
+    val penaltyHistory: List<WebPenaltyEvent>,
+
+    @SerialName("total_regimen_days")
+    val totalRegimenDays: Long
 )
 
 @Serializable

@@ -4,5 +4,6 @@ export interface WebAnomalousEntriesResponse {
 
 export interface WebAnomalousEntry {
     date:   Date;
+    id:     number;
     reason: string;
 }

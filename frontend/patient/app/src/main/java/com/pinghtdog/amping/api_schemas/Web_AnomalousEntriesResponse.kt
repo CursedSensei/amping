@@ -18,5 +18,6 @@ data class WebAnomalousEntriesResponse (
 @Serializable
 data class WebAnomalousEntry (
     val date: String,
+    val id: Long,
     val reason: String
 )
