@@ -4,7 +4,7 @@ export interface WebPatientDetailResponse {
     current_day:      number;
     email:            string;
     firstname:        string;
-    guardians:        WebPatientGuardianEntry[];
+    guardians:        WebPatientGuardianDetailEntry[];
     id:               number;
     lastname:         string;
     month3_protected: boolean;
@@ -14,7 +14,7 @@ export interface WebPatientDetailResponse {
     total_days:       number;
 }
 
-export interface WebPatientGuardianEntry {
+export interface WebPatientGuardianDetailEntry {
     contact:   string;
     email:     string;
     firstname: string;

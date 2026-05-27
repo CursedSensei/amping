@@ -4,7 +4,7 @@ from django.views.decorators.http import require_POST
 from django.conf import settings
 import json
 import os
-from users.models import PatientUser, HealthCareProviderUser, AgeGroup
+from users.models import PatientUser
 from users.tokens import generate_modal_access_token
 
 class MockPatient:
