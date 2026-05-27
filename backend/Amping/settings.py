@@ -49,6 +49,9 @@ if DEBUG:
         "http://localhost:5173"
     ]
 else:
+    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_SAMESITE = 'None'
+
     CORS_ALLOWED_ORIGINS = [
         # TODO: Add production frontend URL here
         "http://localhost:5173",
