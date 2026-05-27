@@ -24,15 +24,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.pinghtdog.amping.ui.HomeDashboardScreen
+import com.pinghtdog.amping.ui.DashBoard
 import com.pinghtdog.amping.ui.session.SessionFlowContainer
 import com.pinghtdog.amping.ui.onboarding.OnboardingScreen
 
 // Note: If you have a custom theme file, import it here (e.g., com.pinghtdog.amping.ui.theme.AmpingTheme)
 
-import com.pinghtdog.amping.ui.onboarding.onboardingNavGraph
 import dagger.hilt.android.AndroidEntryPoint
-//import com.pinghtdog.amping.ui.onboarding.onboardingNavGraph
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -78,7 +76,7 @@ fun AmpingAppNavigation() {
 
             // 1. Home Dashboard
             composable("home") {
-                HomeDashboardScreen(
+                DashBoard(
                     onStartSession = { navController.navigate("session_launch") }
                 )
             }
