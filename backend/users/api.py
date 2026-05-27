@@ -1,8 +1,13 @@
 from ninja.errors import HttpError
 from django.contrib.auth import authenticate, login, logout
 from django.http import HttpRequest
+from django.shortcuts import get_object_or_404
+from django.db import IntegrityError, transaction
 from Amping.utils import create_routers
-from users.schemas import Mobile_RefreshTokenResponse, Web_LoginHealthProviderPayload, Mobile_RefreshTokenPayload, Web_LoginHealthProviderResponse, Web_LogoutResponse
+from .utils import get_random_string
+from .schemas import Mobile_RefreshTokenResponse, Web_LoginHealthProviderPayload, Mobile_RefreshTokenPayload, Web_LoginHealthProviderResponse, Web_LogoutResponse
+from .models import PatientUser, Token
+from .apps import logger
 
 mobile_v1_router, web_v1_router = create_routers()
 
@@ -11,9 +16,25 @@ mobile_v1_router, web_v1_router = create_routers()
 
 @mobile_v1_router.post("/refresh-token/", response=Mobile_RefreshTokenResponse)
 def patient_refresh_token(request: HttpRequest, data: Mobile_RefreshTokenPayload):
-    # implement token refresh logic here, e.g. verify refresh token, issue new access token
+    patient_user = get_object_or_404(PatientUser, refresh_token=data.refresh_token)
+    access_token = Token(
+        access_token=get_random_string(255),
+        patient=patient_user,
+        expires_at="2027-12-31T23:59:59Z"
+    )
 
-    return Mobile_RefreshTokenResponse(access_token="example_access_token")
+    # TODO: Remove old tokens for this patient to prevent token sprawl
+
+    while True:
+        try:
+            with transaction.atomic():
+                Token.save(access_token)
+            break
+        except IntegrityError:
+            logger.error("Failed to create access token for patient %s", patient_user.id)
+            access_token.access_token = get_random_string(255)
+
+    return Mobile_RefreshTokenResponse(access_token=access_token.access_token)
 
 
 # HEALTHCARE AUTHENTICATION
