@@ -259,6 +259,22 @@ class SessionViewModel @Inject constructor(
 
     fun toggleNetworkMode(enabled: Boolean) {
         _uiState.update { it.copy(isNetworkMode = enabled) }
+        if (enabled) {
+            fetchProductionStats()
+        }
+    }
+
+    fun fetchProductionStats() {
+        viewModelScope.launch {
+            try {
+                val stats = gabbyRepository.getStats(context)
+                _uiState.update { it.copy(
+                    streakCount = stats.currentStreak.toInt()
+                ) }
+            } catch (e: Exception) {
+                android.util.Log.e("SessionViewModel", "Failed to fetch production stats", e)
+            }
+        }
     }
 
     fun dismissNetworkError() {
@@ -617,14 +633,33 @@ class SessionViewModel @Inject constructor(
         val symptoms = _uiState.value.selectedSymptoms
         val severity = _uiState.value.nauseaSeverity
 
-        val symptomString = if (symptoms.isEmpty() || symptoms.contains("None of these")) {
+        val symptomList = if (symptoms.isEmpty() || symptoms.contains("None of these")) {
+            emptyList()
+        } else {
+            symptoms.map { if (it == "Nausea") "nausea ($severity severity)" else it.lowercase() }
+        }
+
+        val symptomString = if (symptomList.isEmpty()) {
             "no side effects"
         } else {
-            symptoms.joinToString(", ") + (if (symptoms.contains("Nausea")) " ($severity severity)" else "")
+            symptomList.joinToString(", ")
         }
 
         // Send a simulated user action to Gabby
         val messageContent = "Symptoms reported: $symptomString."
+        
+        if (_uiState.value.isNetworkMode) {
+            viewModelScope.launch {
+                try {
+                    val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                    val dateStr = sdf.format(java.util.Date())
+                    gabbyRepository.uploadSymptoms(context, dateStr, symptomList)
+                } catch (e: Exception) {
+                    android.util.Log.e("SessionViewModel", "Failed to upload symptoms to production", e)
+                }
+            }
+        }
+        
         sendMessage(messageContent)
     }
 
@@ -720,7 +755,7 @@ class SessionViewModel @Inject constructor(
                     com.pinghtdog.amping.data.repository.OfflineQueueManager.updateEntryStatus(context, queueEntry.id, "Uploading")
                     loadOfflineQueue()
                     
-                    gabbyRepository.uploadVideo(encryptedBytes)
+                    gabbyRepository.uploadVideoToProduction(context, encryptedBytes)
                     
                     com.pinghtdog.amping.data.repository.OfflineQueueManager.removeEntry(context, queueEntry.id)
                     loadOfflineQueue()
@@ -833,7 +868,7 @@ class SessionViewModel @Inject constructor(
                             file.readBytes()
                         }
                         
-                        gabbyRepository.uploadVideo(encryptedBytes)
+                        gabbyRepository.uploadVideoToProduction(context, encryptedBytes)
                         
                         com.pinghtdog.amping.data.repository.OfflineQueueManager.removeEntry(context, entry.id)
                         loadOfflineQueue()
