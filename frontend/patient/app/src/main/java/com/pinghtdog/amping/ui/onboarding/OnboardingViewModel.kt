@@ -9,11 +9,12 @@ import kotlinx.coroutines.flow.update
 data class OnboardingUiState(
     val name: String = "",
     val selectedAgeGroup: AgeGroup? = null,
+    val motivation: String = "",
     val showValidationError: Boolean = false
 ) {
-    // Only allow the user to proceed if they entered a name and picked a group
+    // Only allow the user to proceed if they entered a name, picked a group, and entered motivation
     val canProceed: Boolean
-        get() = name.isNotBlank() && selectedAgeGroup != null
+        get() = name.isNotBlank() && selectedAgeGroup != null && motivation.isNotBlank()
 }
 
 enum class AgeGroup(val displayName: String) {
@@ -37,9 +38,18 @@ class OnboardingViewModel : ViewModel() {
         _uiState.update { it.copy(selectedAgeGroup = group, showValidationError = false) }
     }
 
-    fun onContinueClicked(onSuccess: () -> Unit) {
+    fun updateMotivation(newMotivation: String) {
+        _uiState.update { it.copy(motivation = newMotivation, showValidationError = false) }
+    }
+
+    fun onContinueClicked(context: android.content.Context, onSuccess: () -> Unit) {
         if (_uiState.value.canProceed) {
-            // Here you would save the profile to a Database or DataStore
+            try {
+                val file = java.io.File(context.filesDir, "motivation.txt")
+                file.writeText(_uiState.value.motivation)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             onSuccess()
         } else {
             _uiState.update { it.copy(showValidationError = true) }
