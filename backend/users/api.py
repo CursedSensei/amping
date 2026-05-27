@@ -9,7 +9,7 @@ from Amping.utils import create_routers
 from adherence.models import AdherenceDayRecord, AdherenceStatusEnum, SymptomRecord
 from gamification.models import PatientStats
 from .utils import get_random_string, getPatientUserByToken
-from .schemas import Mobile_HealthCareProviderProfileResponse, Mobile_PatientProfileResponse, Mobile_RefreshTokenResponse, Web_CreatePatientPayload, Web_CreatePatientResponse, Web_GetAllPatientsResponse, Web_LoginHealthProviderPayload, Mobile_RefreshTokenPayload, Web_LoginHealthProviderResponse, Web_LogoutResponse, Web_PatientDetailResponse, Web_PatientGuardianEntry
+from .schemas import Mobile_HealthCareProviderProfileResponse, Mobile_PatientProfileResponse, Mobile_RefreshTokenResponse, Web_CreatePatientPayload, Web_CreatePatientResponse, Web_GetAllPatientsResponse, Web_HealthCareProviderProfileResponse, Web_LoginHealthProviderPayload, Mobile_RefreshTokenPayload, Web_LoginHealthProviderResponse, Web_LogoutResponse, Web_PatientDetailResponse, Web_PatientGuardianEntry
 from .models import HealthCareProviderUser, PatientGuardian, PatientUser, Token
 from .apps import logger
 
@@ -63,10 +63,23 @@ def healthcare_logout(request: HttpRequest):
     return Web_LogoutResponse(message="Logged out successfully")
 
 
+@web_v1_router.get("/profile/", response=Web_HealthCareProviderProfileResponse)
+def get_healthcare_profile(request: HttpRequest):
+    healthcare_provider: HealthCareProviderUser = request.user
+
+    return Web_HealthCareProviderProfileResponse(
+        id=healthcare_provider.id,
+        firstname=healthcare_provider.firstname,
+        lastname=healthcare_provider.lastname,
+        email=healthcare_provider.email,
+        contact=healthcare_provider.contact,
+        clinic=healthcare_provider.clinic
+    )
 
 @web_v1_router.get("/patient/", response=Web_GetAllPatientsResponse)
 def get_all_patients(request: HttpRequest):
-    patients = PatientUser.objects.filter(healthcare_provider=request.user)
+    healthcare_provider: HealthCareProviderUser = request.user
+    patients = PatientUser.objects.filter(healthcare_provider=healthcare_provider)
     patient_entries = [
         Web_GetAllPatientsResponse.Web_PatientEntry(
             id=patient.id,
