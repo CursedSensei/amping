@@ -204,19 +204,26 @@ class SessionViewModel @Inject constructor(
         
         _uiState.update { state ->
             var nextPhase = state.currentPhase
+            var nextStage = state.conversationStage
             when (toolName) {
                 "show_symptom_checklist", "transition_to_symptoms" -> {
                     nextPhase = SessionPhase.SYMPTOM_LOGGING
+                    nextStage = 2
                 }
                 "transition_to_vdot" -> {
-                    nextPhase = SessionPhase.VDOT_CAPTURE
+                    nextPhase = SessionPhase.CONVERSATION
+                    nextStage = 3
                 }
                 "trigger_vdot" -> {
                     nextPhase = SessionPhase.VDOT_CAPTURE
                 }
+                "transition_to_success" -> {
+                    nextPhase = SessionPhase.SUCCESS
+                }
             }
             state.copy(
                 currentPhase = nextPhase,
+                conversationStage = nextStage,
                 pendingToolCallName = null,
                 pendingToolCallArgs = emptyMap()
             )
@@ -303,8 +310,19 @@ class SessionViewModel @Inject constructor(
 
     private suspend fun runNetworkChatFlow(prompt: String) {
         try {
+            // Read local motivation text file
+            val motivation = try {
+                val file = java.io.File(context.filesDir, "motivation.txt")
+                if (file.exists()) file.readText().trim() else ""
+            } catch (e: Exception) {
+                ""
+            }
+
             // 1. Fetch transient Session JWT Token
-            val sessionInfo = gabbyRepository.fetchSessionToken(_uiState.value.activeProfile)
+            val sessionInfo = gabbyRepository.fetchSessionToken(
+                userId = _uiState.value.activeProfile,
+                motivation = if (motivation.isNotEmpty()) motivation else null
+            )
 
             // Inject temporary streaming bubble
             val initialHistory = _uiState.value.chatHistory.toMutableList()
@@ -379,6 +397,8 @@ class SessionViewModel @Inject constructor(
             var emergencyReason: String? = state.emergencyState
             var pendingName: String? = null
             var pendingArgs: Map<String, String> = emptyMap()
+            var nextStage = state.conversationStage
+            var nextRepromptCount = state.vdotRepromptCount
 
             // Intercept and act upon tool calling emitted from Gabby
             response.toolCall?.let { tool ->
@@ -387,18 +407,35 @@ class SessionViewModel @Inject constructor(
                         emergencyReason = tool.arguments["reason"] ?: "Self-harm override activated"
                         nextPhase = SessionPhase.CONVERSATION
                     }
-                    "show_symptom_checklist", "transition_to_symptoms", "transition_to_vdot", "trigger_vdot" -> {
+                    "show_symptom_checklist", "transition_to_symptoms" -> {
                         // Defer transitions to allow user to read/hear TTS response first
+                        pendingName = tool.name
+                        pendingArgs = tool.arguments
+                        nextStage = 2
+                    }
+                    "transition_to_vdot" -> {
+                        pendingName = tool.name
+                        pendingArgs = tool.arguments
+                        nextStage = 3
+                    }
+                    "trigger_vdot", "transition_to_success" -> {
                         pendingName = tool.name
                         pendingArgs = tool.arguments
                     }
                 }
             }
 
+            // Increment re-prompt count if in Stage 3 and we didn't receive a trigger_vdot tool call
+            if (state.conversationStage == 3 && response.toolCall?.name != "trigger_vdot") {
+                nextRepromptCount++
+            }
+
             state.copy(
                 chatHistory = updatedMessages,
                 assistantTyping = false,
                 currentPhase = nextPhase,
+                conversationStage = nextStage,
+                vdotRepromptCount = nextRepromptCount,
                 emergencyState = emergencyReason,
                 pendingToolCallName = pendingName,
                 pendingToolCallArgs = pendingArgs
@@ -639,10 +676,26 @@ class SessionViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         isUploading = false,
-                        currentPhase = SessionPhase.SUCCESS,
+                        currentPhase = SessionPhase.CONVERSATION,
                         streakCount = it.streakCount + 1
                     )
                 }
+
+                // Read local motivation text file
+                val motivation = try {
+                    val file = java.io.File(context.filesDir, "motivation.txt")
+                    if (file.exists()) file.readText().trim() else ""
+                } catch (e: Exception) {
+                    ""
+                }
+
+                val uploadPrompt = if (motivation.isNotEmpty()) {
+                    "VDOT upload complete. Motivation: $motivation"
+                } else {
+                    "VDOT upload complete."
+                }
+
+                sendMessage(uploadPrompt)
             } catch (e: Exception) {
                 android.util.Log.e("SessionViewModel", "Upload failed", e)
                 _uiState.update {
@@ -670,6 +723,12 @@ class SessionViewModel @Inject constructor(
             }
             state.copy(
                 currentPhase = phase,
+                conversationStage = when (phase) {
+                    SessionPhase.CONVERSATION -> 1
+                    SessionPhase.SYMPTOM_LOGGING -> 2
+                    else -> 3
+                },
+                vdotRepromptCount = 0,
                 emergencyState = if (phase != SessionPhase.CONVERSATION) null else state.emergencyState
             )
         }
@@ -684,16 +743,30 @@ class SessionViewModel @Inject constructor(
         }
     }
 
+    fun bypassToolCallToVideoRecording() {
+        _uiState.update { it.copy(currentPhase = SessionPhase.VDOT_CAPTURE) }
+    }
+
     private fun updateQuickReplies() {
         val phase = _uiState.value.currentPhase
         val replies = when (phase) {
             SessionPhase.CONVERSATION -> {
-                if (_uiState.value.activeProfile == "youth") {
-                    listOf("Feelin' epic! 😎", "A bit tired today 🥱", "My stomach hurts 🤢")
-                } else if (_uiState.value.activeProfile == "senior") {
-                    listOf("I feel quite well, dear.", "Feeling a bit weak today.", "Struggling with nausea.")
+                if (_uiState.value.conversationStage == 3) {
+                    if (_uiState.value.activeProfile == "youth") {
+                        listOf("Ready", "Not yet", "Wait")
+                    } else if (_uiState.value.activeProfile == "senior") {
+                        listOf("Yes, ready", "Not yet", "Wait a bit")
+                    } else {
+                        listOf("Yes, ready", "Not yet", "Wait")
+                    }
                 } else {
-                    listOf("Feeling fully healthy.", "Experiencing minor fatigue.", "Experiencing mild nausea.")
+                    if (_uiState.value.activeProfile == "youth") {
+                        listOf("Epic! 😎", "Tired 🥱", "Sick 🤢")
+                    } else if (_uiState.value.activeProfile == "senior") {
+                        listOf("Feeling well", "Feeling weak", "Nauseous")
+                    } else {
+                        listOf("Healthy", "Tired", "Nauseous")
+                    }
                 }
             }
             else -> emptyList()
