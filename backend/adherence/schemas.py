@@ -90,6 +90,5 @@ __ALL__ = [
     "Mobile_WeeklyAdherenceResponse",
     "Mobile_UploadSymtomsResponse",
     "Mobile_GetAdherenceVideoEndpointResponse",
-    "Mobile_UploadSymtomsPayload",
-    "Mobile_UploadAdherenceVideoPayload"
+    "Mobile_UploadSymtomsPayload"
 ]
