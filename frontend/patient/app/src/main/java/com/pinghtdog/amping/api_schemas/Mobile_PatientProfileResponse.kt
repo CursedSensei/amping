@@ -1,7 +1,7 @@
 // To parse the JSON, install kotlin's serialization plugin and do:
 //
-// val json                    = Json { allowStructuredMapKeys = true }
-// val webCreatePatientPayload = json.parse(WebCreatePatientPayload.serializer(), jsonString)
+// val json                         = Json { allowStructuredMapKeys = true }
+// val mobilePatientProfileResponse = json.parse(MobilePatientProfileResponse.serializer(), jsonString)
 
 package com.pinghtdog.amping.api_schemas
 
@@ -11,12 +11,15 @@ import kotlinx.serialization.descriptors.*
 import kotlinx.serialization.encoding.*
 
 @Serializable
-data class WebCreatePatientPayload (
+data class MobilePatientProfileResponse (
     val birthyear: Long,
     val contact: String,
+
+    @SerialName("current_day")
+    val currentDay: Long,
+
     val email: String,
     val firstname: String,
-    val guardians: List<WebPatientGuardianEntry>,
     val id: Long,
     val lastname: String,
 
@@ -25,13 +28,4 @@ data class WebCreatePatientPayload (
 
     @SerialName("total_days")
     val totalDays: Long
-)
-
-@Serializable
-data class WebPatientGuardianEntry (
-    val contact: String,
-    val email: String,
-    val firstname: String,
-    val id: Long,
-    val lastname: String
 )
