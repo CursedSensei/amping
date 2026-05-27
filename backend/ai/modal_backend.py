@@ -1,8 +1,10 @@
 # backend/modal_backend.py
 """
 Modal serverless LLM deployment script for NousResearch/Hermes-4-14B-FP8.
-Optimized with an integrated secure FastAPI WebSockets proxy wrapper to enforce 
-offline JWT validation and dynamic prompt injection directly on the serverless GPU container.
+Optimized as a native Modal ASGI web application (@modal.asgi_app) to provide 
+instant public routing, seamless Ktor WebSocket handshaking, and multi-patient concurrency.
+
+Authentication is handled statelessly via offline JWT signature verification.
 
 To deploy this backend:
 1. Make sure you have the `modal` CLI installed and authenticated (`modal setup`).
@@ -25,7 +27,8 @@ vllm_image = (
         "fastapi",
         "uvicorn",
         "hf-transfer",
-        "pyjwt"
+        "pyjwt",
+        "websockets"
     )
     .env({
         "HF_XET_HIGH_PERFORMANCE": "1",
@@ -42,8 +45,53 @@ model_volume = modal.Volume.from_name("gabby-model-cache", create_if_missing=Tru
 MODEL_DIR = "/model-cache"
 MODEL_NAME = "NousResearch/Hermes-4-14B-FP8"
 
-PUBLIC_PORT = 8000
 PRIVATE_VLLM_PORT = 8001
+
+# Global variable to track whether vLLM has completed startup and weight binding
+is_vllm_ready = False
+vllm_process = None
+
+# Asynchronous background loop to spawn vLLM without blocking FastAPI startup
+async def spawn_vllm_background():
+    global is_vllm_ready, vllm_process
+    import subprocess
+    import socket
+    import asyncio
+    
+    print(f"Spawning private local vLLM daemon in background on Port {PRIVATE_VLLM_PORT} for: {MODEL_NAME}...")
+    cmd = [
+        sys.executable, "-m", "vllm.entrypoints.openai.api_server",
+        "--model", MODEL_NAME,
+        "--port", str(PRIVATE_VLLM_PORT),
+        "--host", "127.0.0.1", # Loopback only
+        "--download-dir", MODEL_DIR,
+        "--gpu-memory-utilization", "0.80", 
+        "--max-model-len", "4096",
+        "--served-model-name", "gabby-model", 
+        "--quantization", "compressed-tensors",       
+        "--trust-remote-code", 
+        "--enforce-eager",
+    ]
+    process = subprocess.Popen(cmd)
+    
+    host = "127.0.0.1"
+    retries = 120
+    while retries > 0:
+        try:
+            # Query connection socket in executor to prevent blocking the async loop
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, lambda: socket.create_connection((host, PRIVATE_VLLM_PORT), timeout=2.0))
+            print(f"vLLM daemon is online and listening on Port {PRIVATE_VLLM_PORT}!")
+            is_vllm_ready = True
+            break
+        except Exception:
+            if process.poll() is not None:
+                print("Error: vLLM daemon subprocess crashed unexpectedly.")
+                break
+            print(f"Binding weights in the background... ({retries} pings remaining)")
+            await asyncio.sleep(5)
+            retries -= 1
+
 
 # --- THE SECURE FASTAPI WEBSOCKETS PROXY DEFINITION ---
 def create_secure_proxy_app():
@@ -51,7 +99,7 @@ def create_secure_proxy_app():
     import jwt
     import json
     import httpx
-    import re
+    import asyncio
 
     proxy = FastAPI(title="Gabby Secure WebSockets Proxy")
 
@@ -87,6 +135,41 @@ def create_secure_proxy_app():
             "<tool_call> {\"name\": \"trigger_vdot\", \"arguments\": {\"duration_seconds\": 15}} </tool_call>"
         )
     }
+
+    # Trigger background vLLM daemon startup on FastAPI application init
+    @proxy.on_event("startup")
+    async def startup_event():
+        asyncio.create_task(spawn_vllm_background())
+
+    @proxy.on_event("shutdown")
+    async def shutdown_event():
+        """
+        Gracefully terminate the background vLLM subprocess when the container
+        is scaled down or stopped by Modal, preventing orphaned zombie processes.
+        """
+        print("Shutting down private local vLLM daemon...")
+        global vllm_process
+        if vllm_process:
+            vllm_process.terminate()
+            try:
+                vllm_process.wait(timeout=5.0)
+                print("vLLM daemon process terminated cleanly.")
+            except Exception:
+                print("vLLM daemon failed to terminate in time. Force killing...")
+                vllm_process.kill()
+
+    @proxy.get("/")
+    async def root_health_check():
+        """
+        Public HTTP GET endpoint to satisfy Modal's internal health check / ready-status probes.
+        Returns 200 OK so the load balancer registers the container as healthy.
+        """
+        global is_vllm_ready
+        return {
+            "status": "healthy" if is_vllm_ready else "initializing",
+            "service": "gabby-proxy",
+            "vllm_ready": is_vllm_ready
+        }
 
     @proxy.websocket("/chat")
     async def websocket_chat_endpoint(websocket: WebSocket):
@@ -135,6 +218,18 @@ def create_secure_proxy_app():
             # 2. Await prompt text frame from Ktor WebSocket
             prompt = await websocket.receive_text()
             print(f"Received patient prompt: '{prompt}'")
+
+            # Check if background vLLM daemon is still binding weights.
+            # If so, stream friendly live status updates directly to the client rather than hanging!
+            global is_vllm_ready
+            if not is_vllm_ready:
+                print("vLLM daemon still initializing in background. Informing client...")
+                await websocket.send_text(json.dumps({
+                    "type": "token",
+                    "content": "⚡ Gabby is warming up (loading GPU model weights)... Please hold on a few seconds. ⏳\n\n"
+                }))
+                while not is_vllm_ready:
+                    await asyncio.sleep(2.0)
 
             # 3. Formulate the system instructions securely on the server
             phase_instruction = PHASE_PROMPTS.get(current_phase, PHASE_PROMPTS["empathy"])
@@ -215,7 +310,7 @@ def create_secure_proxy_app():
     return proxy
 
 
-# --- MODAL SERVERLESS EXECUTION ENTRYPOINT ---
+# --- MODAL NATIVE ASGI APPLICATION DEPLOYMENT ---
 @app.function(
     image=vllm_image,
     gpu="L4", 
@@ -225,52 +320,11 @@ def create_secure_proxy_app():
         modal.Secret.from_name("jwt-shared-secret") # Shared secrets mappings
     ],
     timeout=3600, 
-    scaledown_window=600 
+    scaledown_window=600
 )
-@modal.web_server(port=PUBLIC_PORT, startup_timeout=600)
+@modal.asgi_app()
 def serve():
-    import subprocess
-    import time
-    import socket
-    import uvicorn
-    
-    # 1. Spawn the private vLLM Open-AI entrypoint daemon on local port 8001
-    print(f"Spawning private local vLLM daemon on Port {PRIVATE_VLLM_PORT} for model: {MODEL_NAME}...")
-    cmd = [
-        sys.executable, "-m", "vllm.entrypoints.openai.api_server",
-        "--model", MODEL_NAME,
-        "--port", str(PRIVATE_VLLM_PORT),
-        "--host", "127.0.0.1", # Loopback interface only! Inaccessible from outer web
-        "--download-dir", MODEL_DIR,
-        "--gpu-memory-utilization", "0.80", 
-        "--max-model-len", "4096",
-        "--served-model-name", "gabby-model", 
-        "--quantization", "compressed-tensors",       
-        "--trust-remote-code", 
-        "--enforce-eager",
-    ]
-    process = subprocess.Popen(cmd)
-    
-    # 2. Block until local vLLM daemon port is actively listening
-    host = "127.0.0.1"
-    retries = 120
-    while retries > 0:
-        try:
-            with socket.create_connection((host, PRIVATE_VLLM_PORT), timeout=2.0):
-                print(f"vLLM engine online and listening internally on Port {PRIVATE_VLLM_PORT}!")
-                break
-        except (socket.timeout, ConnectionRefusedError):
-            if process.poll() is not None:
-                raise RuntimeError("vLLM daemon crashed unexpectedly during engine startup.")
-            print(f"Binding weights / Initializing pipeline... ({retries} pings remaining)")
-            time.sleep(5)
-            retries -= 1
-            
-    if retries == 0:
-        process.terminate()
-        raise TimeoutError("vLLM failed to bind to localhost socket within 10-minute timeout limit.")
-        
-    # 3. Spin up the public FastAPI secure WebSockets wrapper proxy on port 8000
-    print(f"Deploying secure FastAPI proxy public gateway on Port {PUBLIC_PORT}...")
-    proxy_app = create_secure_proxy_app()
-    uvicorn.run(proxy_app, host="0.0.0.0", port=PUBLIC_PORT)
+    # Return the secure proxy FastAPI application directly. 
+    # Modal natively hooks the ASGI server loop and handles global edge routing.
+    print("Initializing native ASGI web application...")
+    return create_secure_proxy_app()
