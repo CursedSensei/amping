@@ -40,6 +40,14 @@ class Mobile_RefreshTokenResponse(ApiSchema):
     access_token: str
 
 
+class Web_HealthCareProviderProfileResponse(ApiSchema):
+    id: int
+    firstname: str
+    lastname: str
+    email: str
+    contact: str
+    clinic: str
+
 class Web_GetAllPatientsResponse(ApiSchema):
     class Web_PatientEntry(ApiSchema):
         id: int
@@ -98,6 +106,7 @@ class Mobile_HealthCareProviderProfileResponse(Web_HealthCareProviderDetailRespo
 __ALL__ = [
     "Web_CreatePatientPayload",
     "Web_CreatePatientResponse",
+    "Web_HealthCareProviderProfileResponse",
     "Web_LoginHealthProviderPayload",
     "Web_LoginHealthProviderResponse",
     "Web_LogoutResponse",

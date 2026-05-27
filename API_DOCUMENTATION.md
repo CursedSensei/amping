@@ -80,6 +80,35 @@ Notes:
 - Route config: `@web_v1_router.post("/logout/", response=Web_LogoutResponse)`
 - Uses router-level Django session auth.
 
+### `GET /api/v1/web/profile/`
+
+Get the authenticated healthcare provider profile.
+
+Possible return codes:
+- `200` — Success
+- `401` — Unauthorized
+
+Response: `Web_HealthCareProviderDetailResponse`
+- `id` (int)
+- `firstname` (string)
+- `lastname` (string)
+- `email` (string)
+- `contact` (string)
+- `clinic` (string)
+
+Example response payload:
+
+```json
+{
+  "id": 10,
+  "firstname": "Dr.",
+  "lastname": "Who",
+  "email": "dr@example.com",
+  "contact": "",
+  "clinic": "Central Clinic"
+}
+```
+
 ### `GET /api/v1/web/patient/{patient_id}/gamification/`
 
 Get gamification status for a patient.
