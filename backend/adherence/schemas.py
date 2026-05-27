@@ -3,7 +3,7 @@
 from Amping.schemas import ApiSchema
 from datetime import date
 
-from .models import AdherenceStatusEnum
+from .models import AdherenceStatusEnum, ReconciliationMethodEnum
 
 
 class Web_PDCTrendResponse(ApiSchema):
@@ -49,7 +49,7 @@ class Web_ReconcileAnomalyPayload(ApiSchema):
     entries (e.g. mark a technical-miss as provider-verified).
     """
     entry_ids: list[int]
-    verification_method: AdherenceStatusEnum
+    verification_method: ReconciliationMethodEnum
     reason: str
 
 class Web_ReconcileAnomalyResponse(ApiSchema):
