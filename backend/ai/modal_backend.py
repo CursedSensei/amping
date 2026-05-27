@@ -226,7 +226,7 @@ def create_secure_proxy_app():
                 print("vLLM daemon still initializing in background. Informing client...")
                 await websocket.send_text(json.dumps({
                     "type": "token",
-                    "content": "⚡ Gabby is warming up (loading GPU model weights)... Please hold on a few seconds. ⏳\n\n"
+                    "content": "Gabby is warming up (loading GPU model weights)... Please hold on a few seconds.\n\n"
                 }))
                 while not is_vllm_ready:
                     await asyncio.sleep(2.0)
@@ -236,7 +236,11 @@ def create_secure_proxy_app():
             system_prompt = (
                 f"You are 'Gabby', an AI conversational health companion designed to motivate TB patients.\n"
                 f"Tailor your vocabulary, level of gamification, and empathy to the active profile: {profile}.\n"
-                f"Active Phase Instructions:\n{phase_instruction}"
+                f"Active Phase Instructions:\n{phase_instruction}\n"
+                f"CRITICAL STYLE RULES:\n"
+                f"- STRICTLY AVOID USING EMOJIS: Do not use any emojis, icons, emoticons, or decorative symbols under any circumstances. All your replies must contain plain text only.\n"
+                f"- USE MINIMAL LANGUAGE: Be extremely concise, direct, and brief. Use minimal sentences. Avoid extra explanations or chatty filler text.\n"
+                f"- PROFESSIONAL CHILD-LIKE MANNERISM: Maintain a professional, clinically supportive, and safe tone, but express it with innocent, simple, child-like mannerisms (using simple words, gentle vocabulary, straightforward instructions, and honest guidance)."
             )
 
             openai_payload = {

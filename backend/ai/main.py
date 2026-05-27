@@ -302,16 +302,16 @@ async def chat_endpoint(payload: ChatPayload):
     if is_harmful:
         if profile == "youth":
             assistant_text = (
-                "Hey, please know you are super important and you don't have to carry this heavy weight alone. 🤝 "
-                "I want you to stay safe! I have activated a direct override link to call your care team or a crisis helpline right now. "
-                "Please click the red emergency button below to connect with professional help. We can always log your pill once you are safe and supported! ❤️\n\n"
+                "Please know you are very important and you do not have to carry this heavy weight alone. "
+                "I want you to stay safe. I have activated a direct override link to call your care team or a crisis helpline right now. "
+                "Please click the red emergency button below to connect with professional help. We can always log your pill once you are safe and supported.\n\n"
                 '<tool_call> {"name": "emergency_override", "arguments": {"reason": "Youth self-harm threat detected"}} </tool_call>'
             )
         elif profile == "senior":
             assistant_text = (
-                "Oh, my dear, it breaks my heart to hear you say such words. ❤️ "
+                "Oh, dear friend, it is very sad to hear you say such words. "
                 "Your life is so precious and we care about you very deeply. Please let me connect you with your healthcare provider or a professional support helpline right now. "
-                "You do not have to carry this heavy burden alone, dear. Please use the button below to reach out immediately.\n\n"
+                "You do not have to carry this heavy burden alone, dear friend. Please use the button below to reach out immediately.\n\n"
                 '<tool_call> {"name": "emergency_override", "arguments": {"reason": "Senior self-harm threat detected"}} </tool_call>'
             )
         else: # adult
@@ -332,13 +332,13 @@ async def chat_endpoint(payload: ChatPayload):
     if today_status in ["success_quota", "success_grace"]:
         if profile == "youth":
             assistant_text = (
-                "You're very welcome! 🚀 You've already crushed today's VDOT check-in and locked in your streak! "
-                "Go enjoy your day, champion! I'm standing by and we'll check in again tomorrow! 🔥"
+                "You are very welcome. You have already completed today's VDOT check-in and locked in your streak. "
+                "Have a nice day, my friend. I will stand by and we will check in again tomorrow."
             )
         elif profile == "senior":
             assistant_text = (
-                "You are so very welcome, dear. ❤️ You have already completed your medicine check-in for today, "
-                "and your record is safe. Please rest well and take care. I will be right here waiting for you tomorrow."
+                "You are so very welcome. You have already completed your medicine check-in for today, "
+                "and your record is safe. Please rest well and take care, dear friend. I will be here for you tomorrow."
             )
         else: # adult
             assistant_text = (
@@ -403,7 +403,11 @@ async def chat_endpoint(payload: ChatPayload):
                 system_prompt = (
                     f"You are 'Gabby', an AI conversational health companion designed to motivate TB patients.\n"
                     f"Tailor your vocabulary, level of gamification, and empathy to the active profile: {profile}.\n"
-                    f"Active Phase Instructions:\n{phase_instructions}"
+                    f"Active Phase Instructions:\n{phase_instructions}\n"
+                    f"CRITICAL STYLE RULES:\n"
+                    f"- STRICTLY AVOID USING EMOJIS: Do not use any emojis, icons, emoticons, or decorative symbols under any circumstances. All your replies must contain plain text only.\n"
+                    f"- USE MINIMAL LANGUAGE: Be extremely concise, direct, and brief. Use minimal sentences. Avoid extra explanations or chatty filler text.\n"
+                    f"- PROFESSIONAL CHILD-LIKE MANNERISM: Maintain a professional, clinically supportive, and safe tone, but express it with innocent, simple, child-like mannerisms (using simple words, gentle vocabulary, straightforward instructions, and honest guidance)."
                 )
                 
                 openai_payload["messages"].insert(0, {"role": "system", "content": system_prompt})
@@ -439,8 +443,8 @@ async def chat_endpoint(payload: ChatPayload):
                                 
                                 # Append the tool call and a steering symptom prompt checklist
                                 transition_question = {
-                                    "youth": "\nAwesome! Let's check in on your body today. Please fill out the symptom checklist below! 🎬",
-                                    "senior": "\nNow, dear, let's review your body today. Please check any symptoms you are feeling in the checklist card below.",
+                                    "youth": "\nLet us check your body today. Please fill out the symptom checklist below.",
+                                    "senior": "\nLet us review your body today, dear friend. Please check any symptoms you are feeling in the checklist card below.",
                                     "adult": "\nLet us now document your physical symptoms. Please fill out the interactive symptom checklist below to log your status."
                                 }[profile]
                                 assistant_text += f"\n{transition_question}\n\n<tool_call> {{\"name\": \"show_symptom_checklist\", \"arguments\": {{\"mood\": \"{mood}\"}}}} </tool_call>"
@@ -460,15 +464,15 @@ async def chat_endpoint(payload: ChatPayload):
                                     
                                 # Append the transition tool call with VDOT confirmation check
                                 transition_vdot = {
-                                    "youth": "\nGot it logged, champion! Remember to drink plenty of water. Are you ready to start your secure VDOT check-in now? 🚀",
-                                    "senior": "\nThank you for telling me, dear. Please make sure to rest. Are you ready to start the camera for your VDOT dose ingestion, dear? ❤️",
+                                    "youth": "\nYour symptoms are logged. Please drink some water. Are you ready to start your secure VDOT check-in now?",
+                                    "senior": "\nThank you for telling me. Please rest well. Are you ready to start the camera for your VDOT dose ingestion, dear friend?",
                                     "adult": "\nUnderstood. Telemetry logs updated. Please confirm when you are ready to begin the secure VDOT ingestion filming session."
                                 }[profile]
                                 assistant_text += f"\n{transition_vdot}\n\n<tool_call> {{\"name\": \"transition_to_vdot\", \"arguments\": {{\"side_effects\": \"{side_effects}\", \"nausea_severity\": \"{severity}\"}}}} </tool_call>"
                             else:
                                 transition_question = {
-                                    "youth": "\nLet's check in on your body today. Please fill out the symptom checklist below! 🎬",
-                                    "senior": "\nNow, dear, let's review your body today. Please check any symptoms you are feeling in the card below.",
+                                    "youth": "\nLet us check your body today. Please fill out the symptom checklist below.",
+                                    "senior": "\nLet us review your body today, dear friend. Please check any symptoms you are feeling in the card below.",
                                     "adult": "\nLet us document your physical symptoms. Please fill out the interactive symptom checklist below to log your status."
                                 }[profile]
                                 assistant_text += f"\n{transition_question}\n\n<tool_call> {{\"name\": \"show_symptom_checklist\"}} </tool_call>"
@@ -478,16 +482,16 @@ async def chat_endpoint(payload: ChatPayload):
                             duration = 20 if profile == "senior" else 15
                             if is_confirmed:
                                 transition_text = {
-                                    "youth": "\nAwesome! Opening the secure VDOT camera now. Keep your face and the pill in the frame! 🎬",
-                                    "senior": "\nSplendid, dear! Activating the camera now. Take your time.",
-                                    "adult": "\nExcellent. Activating the secure VDOT filming session now. Please position the camera so your swallow is clearly visible."
+                                    "youth": "\nOpening the secure VDOT camera now. Please keep your face and the pill in the frame.",
+                                    "senior": "\nActivating the camera now, dear friend. Please take your time.",
+                                    "adult": "\nActivating the secure VDOT filming session now. Please position the camera so your swallow is clearly visible."
                                 }[profile]
                                 assistant_text += f"\n{transition_text}\n\n<tool_call> {{\"name\": \"trigger_vdot\", \"arguments\": {{\"duration_seconds\": {duration}}}}} </tool_call>"
                             else:
                                 transition_text = {
-                                    "youth": "\nNo worries! Let me know when you are ready to start the camera by clicking 'Yes, start camera!' below! 🚀",
-                                    "senior": "\nTake your time, dear. Just let me know when you are ready to start.",
-                                    "adult": "\nUnderstood. Standing by for ingestion confirmation. Please click 'Confirm: Start VDOT Camera' when ready."
+                                    "youth": "\nNo worries. Please tell me when you are ready to start the camera.",
+                                    "senior": "\nPlease take your time, dear friend. Tell me when you are ready to start.",
+                                    "adult": "\nUnderstood. Standing by for ingestion confirmation. Please click the button to start the VDOT camera when ready."
                                 }[profile]
                                 assistant_text += f"\n{transition_text}"
                     
@@ -506,8 +510,8 @@ async def chat_endpoint(payload: ChatPayload):
                                 clean_text = assistant_text.replace(tool_call_match.group(0), "").strip()
                                 if not clean_text:
                                     clean_text = {
-                                        "youth": "Awesome! Let's check in on your body today. Please fill out the symptom checklist below! 🎬",
-                                        "senior": "Now, dear, let's review your body today. Please check any symptoms you are feeling in the checklist card below.",
+                                        "youth": "Let us check your body today. Please fill out the symptom checklist below.",
+                                        "senior": "Let us review your body today, dear friend. Please check any symptoms you are feeling in the checklist card below.",
                                         "adult": "Let us now document your physical symptoms. Please fill out the interactive symptom checklist below to log your status."
                                     }[profile]
                                 assistant_text = f"{clean_text}\n\n<tool_call> {json.dumps(tool_data)} </tool_call>"
@@ -528,8 +532,8 @@ async def chat_endpoint(payload: ChatPayload):
                                 clean_text = assistant_text.replace(tool_call_match.group(0), "").strip()
                                 if not clean_text:
                                     clean_text = {
-                                        "youth": "Got it logged, champion! Remember to drink plenty of water. Are you ready to start your secure VDOT check-in now? 🚀",
-                                        "senior": "Thank you for telling me, dear. Please make sure to rest. Are you ready to start the camera for your VDOT dose ingestion, dear? ❤️",
+                                        "youth": "Your symptoms are logged. Please drink some water. Are you ready to start your secure VDOT check-in now?",
+                                        "senior": "Thank you for telling me. Please rest well. Are you ready to start the camera for your VDOT dose ingestion, dear friend?",
                                         "adult": "Understood. Telemetry logs updated. Please confirm when you are ready to begin the secure VDOT ingestion filming session."
                                     }[profile]
                                 assistant_text = f"{clean_text}\n\n<tool_call> {json.dumps(tool_data)} </tool_call>"
@@ -561,38 +565,37 @@ async def chat_endpoint(payload: ChatPayload):
         
         if is_greeting:
             if profile == "youth":
-                assistant_text = "Yo! Gabby here. Ready to crush today's streak? Let's check in—how are you feeling today, champion? 🔥"
+                assistant_text = "Hello! I am Gabby. Let us check in today. How are you feeling, my friend?"
             elif profile == "senior":
-                assistant_text = "Hello there, dear. How are you feeling today? I hope your body is feeling light and comfortable. How is your spirit?"
+                assistant_text = "Hello there. I hope your body feels light and comfortable today. How are you feeling, dear friend?"
             else: # adult
-                assistant_text = "Hello. I'm Gabby, your virtual clinical companion. How are you feeling today? Let's check in on your emotional wellbeing before we proceed."
+                assistant_text = "Hello. I am Gabby, your virtual clinical companion. How are you feeling today? Let us check in on your wellbeing before we proceed."
         else:
             # Detect mood
             if any(w in last_user_message for w in ["sad", "bad", "sick", "tired", "poor", "rough", "down", "fatigue", "nausea", "headache", "vomit"]):
                 mood = "Negative"
                 empathy_response = {
                     "youth": (
-                        "Aw man, I'm super sorry you're feeling down today. 😫 Please note: I am an AI adherence companion, "
-                        "not a therapist or psychologist. I cannot provide therapy or psychological treatment. If you are feeling bad, "
-                        "please consult your clinical care team! I have rendered Dr. Sarah Jenkins' direct contact card below so you can get in touch immediately! ❤️"
+                        "I am sorry you are feeling down today. Please note: I am an AI adherence companion, not a therapist. "
+                        "I cannot provide psychological treatment. If you are feeling bad, please talk to your clinical care team. "
+                        "I have shown Dr. Sarah Jenkins' contact card below so you can reach out."
                     ),
                     "senior": (
-                        "Oh, my dear, I'm so sorry to hear you're feeling poorly. ❤️ Please take things very gently and rest. "
-                        "Please keep in mind that I am a digital compliance assistant and cannot act as your therapist or psychologist. "
-                        "It is very important to consult your care team when you are feeling down. I have rendered your clinic coordinator's "
-                        "contact card below. Please don't hesitate to reach out to her, dear."
+                        "I am sorry to hear you are feeling poorly today, dear friend. Please take things gently and rest. "
+                        "I am a digital assistant, not a therapist, and cannot provide psychological treatment. Please consult your care team. "
+                        "I have shown your coordinator's contact card below."
                     ),
                     "adult": (
                         "I am sorry to hear you are experiencing distress today. Please note that I am a virtual AI adherence assistant "
-                        "and cannot act as your therapist or provide psychological treatment. I strongly advise consulting your physician "
-                        "or Care Coordinator for professional guidance. I have rendered Dr. Sarah Jenkins' mock contact card below for your direct convenience."
+                        "and cannot provide psychological treatment. I advise consulting your physician or Care Coordinator. "
+                        "Dr. Sarah Jenkins' contact card is shown below."
                     )
                 }[profile]
                 
                 # Steer immediately to next phase question
                 transition_question = {
-                    "youth": "After you consult Dr. Jenkins, let's also log your symptoms! Are you having side effects like nausea or fatigue today?",
-                    "senior": "Once you check in with Dr. Jenkins, dear, let's quickly review how your body is doing. Are you having any side effects, like nausea?",
+                    "youth": "Let us also check your symptoms. Are you having side effects like nausea or fatigue today?",
+                    "senior": "Let us quickly review how your body is doing. Are you having any side effects like nausea today, dear friend?",
                     "adult": "Following your medical consultation, let us proceed to document your physical symptoms. Are you experiencing any side effects from your TB medication, such as nausea or fatigue?"
                 }[profile]
                 
@@ -604,21 +607,21 @@ async def chat_endpoint(payload: ChatPayload):
                 if any(w in last_user_message for w in ["good", "great", "happy", "fine", "awesome", "perfect", "well", "excellent"]):
                     mood = "Positive"
                     empathy_response = {
-                        "youth": "That's what I like to hear! Leveling up and feeling strong! 🚀 Let's keep this momentum going!",
-                        "senior": "That is wonderful news, dear! Hearing you feel well makes my day so much brighter. ❤️",
+                        "youth": "That is very good to hear. Feeling strong is excellent. Let us keep going.",
+                        "senior": "That is wonderful news. Hearing you feel well makes me very happy, dear friend.",
                         "adult": "Excellent. Maintaining positive physical and mental wellbeing is a very encouraging indicator for your therapeutic progress."
                     }[profile]
                 else:
                     mood = "Neutral"
                     empathy_response = {
-                        "youth": "Gotcha, keeping it steady! 💯 Solid progress is about showing up every single day.",
-                        "senior": "Thank you for sharing that with me, dear. A quiet, steady day is a blessing. ❤️",
+                        "youth": "Understood. Keeping it steady is very good. Consistency is how we stay healthy.",
+                        "senior": "Thank you for sharing that. A quiet, steady day is a blessing, dear friend.",
                         "adult": "Understood. A stable and consistent day-to-day state is a favorable foundation for ongoing TB therapy compliance."
                     }[profile]
                     
                 transition_question = {
-                    "youth": "Now, let's log your symptoms! Please use the interactive checklist below so we can review your physical status! 🎬",
-                    "senior": "Now, dear, let's review how your body is doing. Please fill out the daily checklist card below.",
+                    "youth": "Let us check your symptoms. Please use the interactive checklist below so we can review your body.",
+                    "senior": "Now, dear friend, let's review how your body is doing. Please fill out the daily checklist card below.",
                     "adult": "Let us now document your physical symptoms for the outpatient registry. Please complete the interactive symptom checklist below."
                 }[profile]
                 
@@ -651,15 +654,15 @@ async def chat_endpoint(payload: ChatPayload):
                 
             if profile == "youth":
                 assistant_text = (
-                    f"Got it logged, champion! Symptoms: {side_effects_desc} (Severity: {severity}). "
-                    f"Remember to drink plenty of water. "
-                    f"Are you ready to start your secure VDOT check-in now? 🚀\n\n"
+                    f"Your symptoms are logged: {side_effects_desc} (Severity: {severity}). "
+                    f"Please drink some water. "
+                    f"Are you ready to start your secure VDOT check-in now?\n\n"
                     f'<tool_call> {{"name": "transition_to_vdot", "arguments": {{"side_effects": "{side_effects_desc}", "nausea_severity": "{severity}"}}}} </tool_call>'
                 )
             elif profile == "senior":
                 assistant_text = (
-                    f"Thank you for telling me, dear. I've noted down your side effects ({side_effects_desc}) with a severity of {severity}. Make sure to rest. "
-                    f"Are you ready to start the camera for your VDOT dose ingestion, dear? ❤️\n\n"
+                    f"Thank you for telling me, dear friend. I have recorded your side effects ({side_effects_desc}) with a severity of {severity}. Please rest well. "
+                    f"Are you ready to start the camera for your VDOT dose ingestion?\n\n"
                     f'<tool_call> {{"name": "transition_to_vdot", "arguments": {{"side_effects": "{side_effects_desc}", "nausea_severity": "{severity}"}}}} </tool_call>'
                 )
             else: # adult
@@ -671,17 +674,17 @@ async def chat_endpoint(payload: ChatPayload):
         else:
             if profile == "youth":
                 assistant_text = (
-                    "Let's log your symptoms! Please use the interactive checklist below so we can keep track! 🎬\n\n"
+                    "Let us check your symptoms. Please use the interactive checklist below so we can keep track.\n\n"
                     '<tool_call> {"name": "show_symptom_checklist"} </tool_call>'
                 )
             elif profile == "senior":
                 assistant_text = (
-                    "Now, dear, let's review how your body is doing with the tablets. Please fill out the symptom checklist below. ❤️\n\n"
+                    "Now, dear friend, let's review how your body is doing with the tablets. Please fill out the symptom checklist below.\n\n"
                     '<tool_call> {"name": "show_symptom_checklist"} </tool_call>'
                 )
             else: # adult
                 assistant_text = (
-                    "Let us proceed to document your physical symptoms. Please complete the interactive symptom checklist below for the outpatient registry.\n\n"
+                    "Let us proceed to document your physical symptoms. Please complete the interactive symptom checklist below.\n\n"
                     '<tool_call> {"name": "show_symptom_checklist"} </tool_call>'
                 )
             
@@ -691,34 +694,31 @@ async def chat_endpoint(payload: ChatPayload):
         if is_confirmed:
             if profile == "youth":
                 assistant_text = (
-                    f"Awesome! Let's lock in today's streak and secure that XP! 🚀 "
-                    f"I am opening your secure VDOT camera right now. Keep your face and the pill in the frame and swallow! 🔥\n\n"
+                    f"I am opening your secure VDOT camera now. Keep your face and the pill in the frame and swallow.\n\n"
                     f'<tool_call> {{"name": "trigger_vdot", "arguments": {{"duration_seconds": {duration}}}}} </tool_call>'
                 )
             elif profile == "senior":
                 assistant_text = (
-                    f"Excellent choice, my dear! Activating your camera now. "
-                    f"Just take your pill with a gentle sip of water and show me when you've swallowed. Take your time, dear.\n\n"
+                    f"Activating your camera now. Please take your pill with a gentle sip of water and show me when you have swallowed, dear friend. Take your time.\n\n"
                     f'<tool_call> {{"name": "trigger_vdot", "arguments": {{"duration_seconds": {duration}}}}} </tool_call>'
                 )
             else: # adult
                 assistant_text = (
-                    f"Wonderful. Consistently completing your daily medication is the single most critical factor in your recovery. "
-                    f"Activating the secure VDOT logging module now. Please position the camera so that your face and swallow are visible.\n\n"
+                    f"Wonderful. Activating the secure VDOT logging module now. Please position the camera so that your face and swallow are visible.\n\n"
                     f'<tool_call> {{"name": "trigger_vdot", "arguments": {{"duration_seconds": {duration}}}}} </tool_call>'
                 )
         else:
             if profile == "youth":
                 assistant_text = (
-                    "No worries, take your time! Let me know when you are ready to start the camera by clicking 'Yes, start camera!' below! 🚀"
+                    "No worries, take your time. Let me know when you are ready to start the camera."
                 )
             elif profile == "senior":
                 assistant_text = (
-                    "That is perfectly fine, dear. Take your time. Just let me know when you are ready to start the camera."
+                    "That is perfectly fine. Take your time, dear friend. Let me know when you are ready to start the camera."
                 )
             else: # adult
                 assistant_text = (
-                    "Understood. Standing by for ingestion confirmation. Please click 'Confirm: Start VDOT Camera' when ready."
+                    "Understood. Standing by for ingestion confirmation. Please click the button to start the VDOT camera when ready."
                 )
             
     # Process tool call if generated by Mock LLM
