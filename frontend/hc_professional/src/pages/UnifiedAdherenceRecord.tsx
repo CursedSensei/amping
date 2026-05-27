@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -12,6 +12,7 @@ import {
   Plus,
   AlertCircle,
   Thermometer,
+  Loader2,
 } from 'lucide-react';
 import {
   LineChart,
@@ -23,8 +24,13 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { useReactToPrint } from 'react-to-print';
-import { MOCK_PATIENTS, type DayStatus } from '../data/mockData';
+import { type DayStatus, type PDCPoint, type PenaltyEvent } from '../data/mockData';
 import HeartQuota from '../components/HeartQuota';
+import { getPatient, getAdherenceMonth, getGamification } from '../services/api';
+import { buildHeatmapFromApi, toPenaltyEvent } from '../services/adapters';
+import type { WebPatientDetailResponse } from '../api_types/Web_PatientDetailResponse';
+import type { WebAdherenceMonthResponse } from '../api_types/Web_AdherenceMonthResponse';
+import type { WebGamificationResponse } from '../api_types/Web_GamificationResponse';
 
 // ─── Local grid cell type ─────────────────────────────────────────────────
 //  'empty'  = day exists in calendar but is before the patient's regimen start
@@ -77,19 +83,11 @@ const STATUS_TEXT: Record<DayStatus, string> = {
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-/**
- * Returns the 0-based column index (0 = Mon … 6 = Sun) for the 1st of the
- * given month.  JS Date.getDay() uses 0 = Sun, so we rotate.
- */
 function monthStartCol(year: number, month: number): number {
   const jsDay = new Date(year, month, 1).getDay(); // 0=Sun
   return jsDay === 0 ? 6 : jsDay - 1;             // convert to 0=Mon
 }
 
-/**
- * Builds the flat grid: leading `null` slots for column-padding, then one
- * GridCell per calendar day.
- */
 function buildGridCells(
   year: number,
   month: number,
@@ -116,12 +114,9 @@ function CalCell({
   selected: boolean;
   onClick: (c: GridCell) => void;
 }) {
-  // Days before regimen start — blank placeholder, no number
   if (cell.status === 'empty') {
     return <div className="w-10 h-10 rounded-xl bg-gray-50" />;
   }
-
-  // Future days — greyed out, not interactive
   if (cell.status === 'future') {
     return (
       <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-semibold ${STATUS_STYLE.future}`}>
@@ -129,8 +124,6 @@ function CalCell({
       </div>
     );
   }
-
-  // Active adherence days — clickable
   const style = STATUS_STYLE[cell.status];
   return (
     <button
@@ -154,7 +147,6 @@ function DayDetailPanel({
   month: string;
   onClose: () => void;
 }) {
-  // Only called for real DayStatus cells (not 'empty')
   const status = cell.status as DayStatus;
   const [mo, yr] = month.split(' ');
 
@@ -324,78 +316,142 @@ function SymptomsPanel({ initial }: { initial?: string[] }) {
 export default function UnifiedAdherenceRecord() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const patient = MOCK_PATIENTS.find((p) => p.id === id);
   const printRef = useRef<HTMLDivElement>(null);
 
-  const [selectedCell, setSelectedCell] = useState<GridCell | null>(null);
+  // ── API state ─────────────────────────────────────────────────────────────
+  const [patientDetail, setPatientDetail] = useState<WebPatientDetailResponse | null>(null);
+  const [adherence, setAdherence] = useState<WebAdherenceMonthResponse | null>(null);
+  const [gamification, setGamification] = useState<WebGamificationResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [adherenceLoading, setAdherenceLoading] = useState(false);
+  const [fetchError, setFetchError] = useState('');
 
-  const [currentDate, setCurrentDate] = useState<Date>(() =>
-    patient ? new Date(`${patient.heatmapMonth} 1`) : new Date(),
-  );
+  const [selectedCell, setSelectedCell] = useState<GridCell | null>(null);
+  const [currentDate, setCurrentDate] = useState<Date>(new Date());
+
+  const numericId = id ? Number(id) : NaN;
+
+  // Fetch patient detail + gamification once on mount
+  useEffect(() => {
+    if (isNaN(numericId)) return;
+    setLoading(true);
+    Promise.all([getPatient(numericId), getGamification(numericId)])
+      .then(([p, g]) => {
+        setPatientDetail(p);
+        setGamification(g);
+      })
+      .catch(() => setFetchError('Failed to load patient data.'))
+      .finally(() => setLoading(false));
+  }, [numericId]);
+
+  // Re-fetch adherence whenever month changes
+  useEffect(() => {
+    if (isNaN(numericId)) return;
+    const month = currentDate.getMonth() + 1; // 1-indexed
+    const year  = currentDate.getFullYear();
+    setAdherenceLoading(true);
+    setSelectedCell(null);
+    getAdherenceMonth(numericId, month, year)
+      .then(setAdherence)
+      .catch(() => setAdherence(null))
+      .finally(() => setAdherenceLoading(false));
+  }, [numericId, currentDate]);
 
   const handlePrevMonth = () =>
     setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
-
   const handleNextMonth = () =>
     setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
 
   const handlePrint = useReactToPrint({
     contentRef: printRef,
-    documentTitle: patient ? `UAR_${patient.patientId}` : 'UnifiedAdherenceRecord',
+    documentTitle: patientDetail ? `UAR_${patientDetail.id}` : 'UnifiedAdherenceRecord',
   });
 
-  if (!patient) return <div className="p-8 text-gray-500">Patient not found.</div>;
-
-  const isOnTrack = patient.monthPDC >= patient.pdcTarget;
-
-  // ── Derive display strings ────────────────────────────────────────────────
-  const year  = currentDate.getFullYear();
-  const month = currentDate.getMonth(); // 0-11
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  // Normalise both to "MMM YYYY" uppercase for comparison (e.g. "MAY 2026")
-  const viewMonthStr    = currentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase();
-  const patientMonthStr = patient.heatmapMonth.toUpperCase();
-  const isPatientMonth  = viewMonthStr === patientMonthStr;
-
-  const displayMonthStr = isPatientMonth ? patient.heatmapMonth : viewMonthStr;
-
-  // ── Build override look-up from mock data (only for patient's own month) ──
-  const overrideMap = new Map<number, { status: DayStatus; note?: string }>();
-  if (isPatientMonth) {
-    for (const hd of patient.heatmapDays) {
-      if (hd.date !== null) overrideMap.set(hd.date, { status: hd.status, note: hd.note });
-    }
+  // ── Loading / error guards ────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-50">
+        <Loader2 size={28} className="animate-spin text-blue-400" />
+      </div>
+    );
+  }
+  if (fetchError || !patientDetail) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="text-gray-500 mb-3">{fetchError || 'Patient not found.'}</p>
+          <button onClick={() => navigate('/')} className="text-blue-600 text-sm underline">
+            Back to Roster
+          </button>
+        </div>
+      </div>
+    );
   }
 
-  // ── Boundary dates (time stripped to midnight) ───────────────────────────
-  const regimenStart = new Date(patient.regimentStart);
-  regimenStart.setHours(0, 0, 0, 0);
+  // ── Derived display values ────────────────────────────────────────────────
+  const monthPDC  = adherence?.month_pdc  ?? 0;
+  const pdcTarget = adherence?.pdc_target ?? patientDetail.pdc_target;
+  const isOnTrack = monthPDC >= pdcTarget;
+
+  const patientName    = `${patientDetail.firstname} ${patientDetail.lastname}`;
+  const regimenStartDate = new Date(patientDetail.regimen_start);
+  regimenStartDate.setHours(0, 0, 0, 0);
+
+  // Gamification
+  const currentStreak   = gamification?.current_streak  ?? 0;
+  const bestStreak      = gamification?.best_streak     ?? 0;
+  const heartQuota      = gamification?.heart_quota     ?? 0;
+  const penaltyHistory: PenaltyEvent[] = (gamification?.penalty_history ?? []).map(toPenaltyEvent);
+
+  // Symptoms from this month's adherence days
+  const symptomsThisMonth: string[] = adherence
+    ? [...new Set(adherence.adherence_days.flatMap((d) => d.symptoms ?? []))]
+    : [];
+
+  // Anomaly count for CTA button
+  const anomalyCount = adherence
+    ? adherence.adherence_days.filter((d) => d.status === 'unverified_absence').length
+    : 0;
+
+  // Weekly PDC trend — not in current API; hidden when empty
+  const pdcTrend: PDCPoint[] = [];
+
+  // ── Calendar grid ─────────────────────────────────────────────────────────
+  const year        = currentDate.getFullYear();
+  const month0      = currentDate.getMonth(); // 0-indexed
+  const daysInMonth = new Date(year, month0 + 1, 0).getDate();
+
+  const displayMonthStr = currentDate
+    .toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    .toUpperCase();
+
+  // Build override map from API adherence days
+  const overrideMap = new Map<number, { status: DayStatus; note?: string }>();
+  if (adherence) {
+    const { heatmapDays } = buildHeatmapFromApi(
+      adherence.adherence_days,
+      year,
+      month0 + 1,
+    );
+    for (const hd of heatmapDays) {
+      if (hd.date !== null && hd.status !== 'future') {
+        overrideMap.set(hd.date, { status: hd.status, note: hd.note });
+      }
+    }
+  }
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // ── Per-day classifier ────────────────────────────────────────────────────
   const classify = (day: number): { status: CellStatus; note?: string } => {
-    const cellDate = new Date(year, month, day);
-
-    // Before regimen start → empty blank cell
-    if (cellDate < regimenStart) return { status: 'empty' };
-
-    // Future date → greyed non-interactive cell
-    if (cellDate > today) return { status: 'future' };
-
-    // Past/present date within regimen
-    if (isPatientMonth && overrideMap.has(day)) {
-      const { status, note } = overrideMap.get(day)!;
-      return { status, note };
-    }
-
-    // Default: patient's own month → app-recorded; other months → unverified
-    return { status: isPatientMonth ? 'app-recorded' : 'unverified-absence' };
+    const cellDate = new Date(year, month0, day);
+    if (cellDate < regimenStartDate) return { status: 'empty' };
+    if (cellDate > today)            return { status: 'future' };
+    if (overrideMap.has(day))        return overrideMap.get(day)!;
+    return { status: 'app-recorded' };
   };
 
-  const gridCells = buildGridCells(year, month, daysInMonth, classify);
+  const gridCells = buildGridCells(year, month0, daysInMonth, classify);
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
@@ -433,15 +489,11 @@ export default function UnifiedAdherenceRecord() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Patient Name</p>
-                <p className="font-bold text-gray-900">{patient.name}</p>
+                <p className="font-bold text-gray-900">{patientName}</p>
               </div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Patient ID</p>
-                <p className="font-medium text-gray-700">{patient.patientId}</p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Age Bracket</p>
-                <p className="font-medium text-gray-700">{patient.ageProfile}</p>
+                <p className="font-medium text-gray-700">{patientDetail.id}</p>
               </div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Treatment Progress</p>
@@ -449,26 +501,21 @@ export default function UnifiedAdherenceRecord() {
                   <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-blue-500 rounded-full"
-                      style={{ width: `${(patient.currentDay / patient.totalDays) * 100}%` }}
+                      style={{ width: `${(patientDetail.current_day / patientDetail.total_days) * 100}%` }}
                     />
                   </div>
                   <span className="text-xs font-semibold text-blue-600">
-                    Day {patient.currentDay} of {patient.totalDays}
+                    Day {patientDetail.current_day} of {patientDetail.total_days}
                   </span>
                 </div>
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Clinic</p>
-                <p className="text-sm text-gray-700">{patient.clinic}</p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Provider & BHW</p>
-                <p className="text-sm text-gray-700">{patient.provider}</p>
-                <p className="text-xs text-gray-400">BHW: {patient.bhw}</p>
-              </div>
-              <div>
                 <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Regimen Start</p>
-                <p className="text-sm text-gray-700">{patient.regimentStart}</p>
+                <p className="text-sm text-gray-700">
+                  {new Date(patientDetail.regimen_start).toLocaleDateString('en-US', {
+                    month: 'long', day: 'numeric', year: 'numeric',
+                  })}
+                </p>
               </div>
             </div>
           </div>
@@ -501,13 +548,16 @@ export default function UnifiedAdherenceRecord() {
                   {/* PDC badge */}
                   <div className="flex items-center gap-4">
                     <div className="text-right">
-                      <span className="text-4xl font-bold text-gray-900">{patient.monthPDC}%</span>
+                      {adherenceLoading
+                        ? <Loader2 size={24} className="animate-spin text-blue-300 ml-auto" />
+                        : <span className="text-4xl font-bold text-gray-900">{monthPDC}%</span>
+                      }
                       <p className="text-[11px] text-gray-400 uppercase tracking-wider">
                         Proportion of Days Covered
                       </p>
                     </div>
                     <div className="flex flex-col gap-1 items-end">
-                      <span className="text-[11px] text-gray-400">Target ≥{patient.pdcTarget}%</span>
+                      <span className="text-[11px] text-gray-400">Target ≥{pdcTarget}%</span>
                       <span
                         className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
                           isOnTrack ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
@@ -520,7 +570,7 @@ export default function UnifiedAdherenceRecord() {
                 </div>
 
                 {/* Month 3 badge */}
-                {patient.month3Protected && (
+                {patientDetail.month3_protected && (
                   <div className="flex items-center gap-2 bg-teal-50 border border-teal-100 rounded-lg px-3 py-2 mb-4">
                     <ShieldCheck size={13} className="text-teal-600" />
                     <span className="text-xs font-semibold text-teal-700">
@@ -542,7 +592,6 @@ export default function UnifiedAdherenceRecord() {
                 <div className="grid grid-cols-7 gap-2">
                   {gridCells.map((cell, i) =>
                     cell === null ? (
-                      // Column-padding slot
                       <div key={`pad-${i}`} />
                     ) : (
                       <div key={`${cell.date}-${i}`} className="flex items-center justify-center">
@@ -556,7 +605,7 @@ export default function UnifiedAdherenceRecord() {
                   )}
                 </div>
 
-                {/* Day detail panel — only for real, non-empty, non-future cells */}
+                {/* Day detail panel */}
                 {selectedCell &&
                   selectedCell.status !== 'future' &&
                   selectedCell.status !== 'empty' && (
@@ -592,51 +641,53 @@ export default function UnifiedAdherenceRecord() {
                 </div>
               </div>
 
-              {/* PDC Trend */}
-              <div className="bg-white border border-gray-100 rounded-xl p-6">
-                <h3 className="font-semibold text-gray-900 mb-1 text-sm">Weekly PDC Trend</h3>
-                <p className="text-xs text-gray-400 mb-4">Proportion of Days Covered by week</p>
-                <ResponsiveContainer width="100%" height={160}>
-                  <LineChart data={patient.pdcTrend} margin={{ top: 8, right: 16, left: -16, bottom: 0 }}>
-                    <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                    <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <ReferenceLine
-                      y={patient.pdcTarget}
-                      stroke="#f59e0b"
-                      strokeDasharray="4 4"
-                      label={{ value: `Target ${patient.pdcTarget}%`, fill: '#f59e0b', fontSize: 10, position: 'right' }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="pdc"
-                      stroke="#3b82f6"
-                      strokeWidth={2.5}
-                      dot={{ fill: '#3b82f6', r: 4 }}
-                      activeDot={{ r: 6, fill: '#1d4ed8' }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-                <div className="flex items-center gap-4 mt-3 text-[11px]">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-6 border-t-2 border-blue-500 border-dashed inline-block" />
-                    <span className="text-gray-500">PDC this month</span>
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-6 border-t-2 border-amber-400 border-dashed inline-block" />
-                    <span className="text-gray-500">Target ≥{patient.pdcTarget}%</span>
-                  </span>
+              {/* PDC Trend — shown only when backend provides weekly data */}
+              {pdcTrend.length > 0 && (
+                <div className="bg-white border border-gray-100 rounded-xl p-6">
+                  <h3 className="font-semibold text-gray-900 mb-1 text-sm">Weekly PDC Trend</h3>
+                  <p className="text-xs text-gray-400 mb-4">Proportion of Days Covered by week</p>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <LineChart data={pdcTrend} margin={{ top: 8, right: 16, left: -16, bottom: 0 }}>
+                      <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                      <Tooltip content={<CustomTooltip />} />
+                      <ReferenceLine
+                        y={pdcTarget}
+                        stroke="#f59e0b"
+                        strokeDasharray="4 4"
+                        label={{ value: `Target ${pdcTarget}%`, fill: '#f59e0b', fontSize: 10, position: 'right' }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="pdc"
+                        stroke="#3b82f6"
+                        strokeWidth={2.5}
+                        dot={{ fill: '#3b82f6', r: 4 }}
+                        activeDot={{ r: 6, fill: '#1d4ed8' }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  <div className="flex items-center gap-4 mt-3 text-[11px]">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-6 border-t-2 border-blue-500 border-dashed inline-block" />
+                      <span className="text-gray-500">PDC this month</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-6 border-t-2 border-amber-400 border-dashed inline-block" />
+                      <span className="text-gray-500">Target ≥{pdcTarget}%</span>
+                    </span>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Reconcile CTA */}
-              {patient.anomalousEntries.length > 0 && (
+              {anomalyCount > 0 && (
                 <button
                   onClick={() => navigate(`/patient/${id}/reconcile`)}
                   className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white text-sm font-semibold py-3 rounded-xl hover:bg-blue-700 transition-colors print:hidden"
                 >
                   <ShieldCheck size={15} />
-                  Reconcile Anomalous Entries ({patient.anomalousEntries.length})
+                  Reconcile Anomalous Entries ({anomalyCount})
                 </button>
               )}
             </div>
@@ -652,14 +703,14 @@ export default function UnifiedAdherenceRecord() {
                     <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Current Streak</p>
                     <div className="flex items-center gap-1">
                       <Zap size={15} className="text-yellow-500 fill-yellow-400" />
-                      <span className="font-bold text-gray-900 text-lg">{patient.currentStreak}</span>
+                      <span className="font-bold text-gray-900 text-lg">{currentStreak}</span>
                       <span className="text-xs text-gray-400 ml-0.5">days</span>
                     </div>
                   </div>
                   <div>
                     <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Best Streak</p>
                     <div className="flex items-center gap-1">
-                      <span className="font-bold text-gray-600 text-lg">{patient.bestStreak}</span>
+                      <span className="font-bold text-gray-600 text-lg">{bestStreak}</span>
                       <span className="text-xs text-gray-400 ml-0.5">days</span>
                     </div>
                   </div>
@@ -667,14 +718,14 @@ export default function UnifiedAdherenceRecord() {
 
                 <div className="mb-5">
                   <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Heart Quota</p>
-                  <HeartQuota filled={patient.heartQuota} />
+                  <HeartQuota filled={heartQuota} />
                 </div>
 
-                {patient.penaltyHistory.length > 0 && (
+                {penaltyHistory.length > 0 && (
                   <div className="border-t border-gray-100 pt-4">
-                    <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-3">Penalty History (May)</p>
+                    <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-3">Penalty History</p>
                     <div className="space-y-2">
-                      {patient.penaltyHistory.map((ev, i) => (
+                      {penaltyHistory.map((ev, i) => (
                         <div key={i} className="flex items-center gap-2">
                           <span
                             className={`text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center ${
@@ -695,10 +746,10 @@ export default function UnifiedAdherenceRecord() {
               </div>
 
               {/* Symptoms panel */}
-              <SymptomsPanel initial={patient.symptomReported} />
+              <SymptomsPanel initial={symptomsThisMonth} />
 
               {/* Month 3 protection card */}
-              {patient.month3Protected && (
+              {patientDetail.month3_protected && (
                 <div className="bg-teal-50 border border-teal-100 rounded-xl p-5">
                   <div className="flex items-center gap-2 mb-2">
                     <ShieldCheck size={14} className="text-teal-600" />

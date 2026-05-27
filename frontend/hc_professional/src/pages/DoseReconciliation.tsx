@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ShieldCheck, ChevronRight, Zap, CheckCircle2, X } from 'lucide-react';
-import { MOCK_PATIENTS, type AnomalousEntry } from '../data/mockData';
+import { ArrowLeft, ShieldCheck, ChevronRight, Zap, CheckCircle2, X, Loader2, AlertCircle } from 'lucide-react';
+import { type AnomalousEntry } from '../data/mockData';
+import { getPatient, getAnomalousEntries, reconcileAnomalies } from '../services/api';
+import { toAnomalousEntry } from '../services/adapters';
+import type { WebPatientDetailResponse } from '../api_types/Web_PatientDetailResponse';
 
 // ─── Status config ──────────────────────────────────────────────────────────
 
@@ -52,10 +55,12 @@ function Toast({ onDismiss }: { onDismiss: () => void }) {
 
 function ReconcileModal({
   entries,
+  submitting,
   onClose,
   onConfirm,
 }: {
   entries: AnomalousEntry[];
+  submitting: boolean;
   onClose: () => void;
   onConfirm: (method: string, reason: string) => void;
 }) {
@@ -132,16 +137,24 @@ function ReconcileModal({
         <div className="p-6 pt-0 flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 border border-gray-200 text-gray-600 text-sm font-medium py-3 rounded-xl hover:bg-gray-50 transition-colors"
+            disabled={submitting}
+            className="flex-1 border border-gray-200 text-gray-600 text-sm font-medium py-3 rounded-xl hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={() => onConfirm(method, reason)}
-            disabled={!reason.trim()}
-            className="flex-[2] bg-emerald-600 text-white text-sm font-semibold py-3 rounded-xl hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            disabled={!reason.trim() || submitting}
+            className="flex-[2] bg-emerald-600 text-white text-sm font-semibold py-3 rounded-xl hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
           >
-            Apply Stamp
+            {submitting ? (
+              <>
+                <Loader2 size={15} className="animate-spin" />
+                Applying…
+              </>
+            ) : (
+              'Apply Stamp'
+            )}
           </button>
         </div>
       </div>
@@ -154,17 +167,71 @@ function ReconcileModal({
 export default function DoseReconciliation() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const patient = MOCK_PATIENTS.find((p) => p.id === id);
+  const numericId = Number(id);
 
+  // ── API state ────────────────────────────────────────────────────────────
+  const [patientDetail, setPatientDetail] = useState<WebPatientDetailResponse | null>(null);
+  const [entries, setEntries] = useState<AnomalousEntry[]>([]);
+  // Map<localStringId, rawNumericId> — needed to build entry_ids payload
+  const [rawIds, setRawIds] = useState<Map<string, number>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [fetchError, setFetchError] = useState('');
+
+  // ── UI state ─────────────────────────────────────────────────────────────
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showModal, setShowModal] = useState(false);
   const [reconciled, setReconciled] = useState<Set<string>>(new Set());
   const [showToast, setShowToast] = useState(false);
-  // Live streak mirrors the patient's streak, increases when reconciled
-  const [liveStreak, setLiveStreak] = useState(patient?.currentStreak ?? 0);
+  const [liveStreak, setLiveStreak] = useState(0);
+  const [baseStreak, setBaseStreak] = useState(0);
 
-  if (!patient) return <div className="p-8 text-gray-500">Patient not found.</div>;
+  // ── Fetch on mount ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!numericId) return;
+    let cancelled = false;
+    setLoading(true);
+    setFetchError('');
 
+    Promise.all([
+      getPatient(numericId),
+      getAnomalousEntries(numericId),
+    ])
+      .then(([detail, anomalousRes]) => {
+        if (cancelled) return;
+        setPatientDetail(detail);
+
+        // Build local entries + rawIds map
+        const idMap = new Map<string, number>();
+        const adapted = anomalousRes.entries.map((e) => {
+          const local = toAnomalousEntry(e);
+          idMap.set(local.id, e.id);
+          return local;
+        });
+        setEntries(adapted);
+        setRawIds(idMap);
+      })
+      .catch(() => {
+        if (!cancelled) setFetchError('Failed to load patient data. Please go back and try again.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [numericId]);
+
+  // Sync liveStreak once patient loads (gamification not fetched here — use
+  // current_day as a proxy; real streak comes from reconcile response)
+  useEffect(() => {
+    if (patientDetail) {
+      // We don't have streak from the detail endpoint; default 0 until reconcile updates it
+      setLiveStreak(0);
+      setBaseStreak(0);
+    }
+  }, [patientDetail]);
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
   const toggle = (entryId: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -173,22 +240,72 @@ export default function DoseReconciliation() {
     });
   };
 
-  const handleConfirm = (method: string, _reason: string) => {
-    const count = selected.size;
-    setReconciled((prev) => new Set([...prev, ...selected]));
-    setSelected(new Set());
-    setShowModal(false);
-    setShowToast(true);
-    // Restore streak: each reconciled day +1 (simplified — shows intent)
-    setLiveStreak((prev) => Math.min(prev + count, patient.bestStreak));
-    console.log('Verification method:', method);
+  const handleConfirm = async (method: string, reason: string) => {
+    // Build numeric entry_ids from the rawIds map
+    const entryIds: number[] = [];
+    for (const localId of selected) {
+      const rawId = rawIds.get(localId);
+      if (rawId !== undefined) entryIds.push(rawId);
+    }
+
+    setSubmitting(true);
+    try {
+      const result = await reconcileAnomalies(numericId, {
+        entry_ids: entryIds,
+        verification_method: method,
+        reason,
+      });
+
+      setReconciled((prev) => new Set([...prev, ...selected]));
+      setSelected(new Set());
+      setShowModal(false);
+      setShowToast(true);
+      setLiveStreak(result.updated_streak);
+    } catch {
+      // Keep modal open — user can retry or cancel
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const selectedEntries = patient.anomalousEntries.filter((e) => selected.has(e.id));
-  const pending = patient.anomalousEntries.filter((e) => !reconciled.has(e.id));
-  const reconciledEntries = patient.anomalousEntries.filter((e) => reconciled.has(e.id));
+  // ── Derived ──────────────────────────────────────────────────────────────
+  const selectedEntries = entries.filter((e) => selected.has(e.id));
+  const pending = entries.filter((e) => !reconciled.has(e.id));
+  const reconciledEntries = entries.filter((e) => reconciled.has(e.id));
+  const streakChanged = liveStreak > baseStreak;
 
-  const streakChanged = liveStreak > patient.currentStreak;
+  // ── Loading ──────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3 text-gray-400">
+          <Loader2 size={32} className="animate-spin text-blue-500" />
+          <p className="text-sm font-medium">Loading reconciliation data…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Error ─────────────────────────────────────────────────────────────────
+  if (fetchError || !patientDetail) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-8">
+        <div className="text-center">
+          <AlertCircle size={40} className="mx-auto mb-3 text-red-400" />
+          <p className="font-semibold text-gray-700 mb-1">Unable to load data</p>
+          <p className="text-sm text-gray-400 mb-4">{fetchError || 'Patient not found.'}</p>
+          <button
+            onClick={() => navigate('/')}
+            className="text-sm text-blue-600 font-medium hover:text-blue-700 transition-colors"
+          >
+            ← Back to Roster
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const patientName = `${patientDetail.firstname} ${patientDetail.lastname}`;
 
   return (
     <div className="min-h-screen bg-gray-50 relative">
@@ -236,20 +353,28 @@ export default function DoseReconciliation() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-[11px] uppercase tracking-wider text-gray-400 mb-0.5">Patient Name</p>
-              <p className="font-semibold text-gray-900">{patient.name}</p>
+              <p className="font-semibold text-gray-900">{patientName}</p>
             </div>
             <div>
               <p className="text-[11px] uppercase tracking-wider text-gray-400 mb-0.5">Patient ID</p>
-              <p className="font-medium text-gray-700">{patient.patientId}</p>
+              <p className="font-medium text-gray-700">#{patientDetail.id}</p>
             </div>
             <div>
-              <p className="text-[11px] uppercase tracking-wider text-gray-400 mb-0.5">Clinic & BHW</p>
-              <p className="text-sm text-gray-700">{patient.clinic}</p>
-              <p className="text-xs text-gray-400">BHW: {patient.bhw}</p>
+              <p className="text-[11px] uppercase tracking-wider text-gray-400 mb-0.5">Contact</p>
+              <p className="text-sm text-gray-700">{patientDetail.contact || '—'}</p>
+              <p className="text-xs text-gray-400">{patientDetail.email || ''}</p>
             </div>
             <div>
-              <p className="text-[11px] uppercase tracking-wider text-gray-400 mb-0.5">Profile</p>
-              <p className="text-sm text-gray-700">{patient.ageProfile}</p>
+              <p className="text-[11px] uppercase tracking-wider text-gray-400 mb-0.5">Regimen Start</p>
+              <p className="text-sm text-gray-700">
+                {patientDetail.regimen_start
+                  ? new Date(patientDetail.regimen_start).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })
+                  : '—'}
+              </p>
             </div>
           </div>
 
@@ -268,9 +393,6 @@ export default function DoseReconciliation() {
                   {liveStreak}
                 </span>
                 <span className="text-xs text-gray-400 ml-0.5">days</span>
-                {liveStreak < patient.bestStreak && (
-                  <span className="text-[11px] text-gray-400">(broken from {patient.bestStreak})</span>
-                )}
                 {streakChanged && (
                   <span className="text-[11px] text-green-600 font-semibold ml-1">↑ Restored</span>
                 )}
@@ -284,11 +406,11 @@ export default function DoseReconciliation() {
                 <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-blue-500 rounded-full"
-                    style={{ width: `${(patient.currentDay / patient.totalDays) * 100}%` }}
+                    style={{ width: `${(patientDetail.current_day / patientDetail.total_days) * 100}%` }}
                   />
                 </div>
                 <span className="text-sm font-medium text-gray-700">
-                  Day {patient.currentDay} of {patient.totalDays}
+                  Day {patientDetail.current_day} of {patientDetail.total_days}
                 </span>
               </div>
             </div>
@@ -434,6 +556,7 @@ export default function DoseReconciliation() {
       {showModal && (
         <ReconcileModal
           entries={selectedEntries}
+          submitting={submitting}
           onClose={() => setShowModal(false)}
           onConfirm={handleConfirm}
         />

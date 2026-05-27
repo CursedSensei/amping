@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -6,6 +6,7 @@ import PatientRoster from './pages/PatientRoster';
 import UnifiedAdherenceRecord from './pages/UnifiedAdherenceRecord';
 import DoseReconciliation from './pages/DoseReconciliation';
 import RiskStratification from './pages/RiskStratification';
+import { logout as apiLogout } from './services/api';
 
 // ─── Page transition wrapper ────────────────────────────────────────────────
 
@@ -61,18 +62,18 @@ function AnimatedRoutes({ isAuthed, onLogin, onLogout }: {
 // ─── Root ────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [isAuthed, setIsAuthed] = useState(() => sessionStorage.getItem('hc_auth') === 'true');
-
-  useEffect(() => {
-    // Sync auth state on storage events (multi-tab support)
-    const onStorage = () => setIsAuthed(sessionStorage.getItem('hc_auth') === 'true');
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
+  // Django session cookie is the source of truth — start unauthenticated.
+  // The 401 interceptor in api.ts will redirect to /login if the cookie expires.
+  const [isAuthed, setIsAuthed] = useState(false);
 
   const handleLogin = () => setIsAuthed(true);
-  const handleLogout = () => {
-    sessionStorage.removeItem('hc_auth');
+
+  const handleLogout = async () => {
+    try {
+      await apiLogout();
+    } catch {
+      // Ignore errors — clear local state regardless so UI reflects logged-out
+    }
     setIsAuthed(false);
   };
 

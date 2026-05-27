@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
+import axios from 'axios';
+import { login as apiLogin } from '../services/api';
 
 interface LoginProps {
   onLogin: () => void;
@@ -31,15 +33,28 @@ export default function Login({ onLogin }: LoginProps) {
       return;
     }
 
-    // Simulate network call — no backend yet
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 900));
-    setLoading(false);
-
-    // Store a simple session flag
-    sessionStorage.setItem('hc_auth', 'true');
-    onLogin();
-    navigate('/', { replace: true });
+    try {
+      await apiLogin(email, password);
+      onLogin();
+      navigate('/', { replace: true });
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        if (err.response?.status === 400) {
+          // Already authenticated — just go home
+          onLogin();
+          navigate('/', { replace: true });
+        } else if (err.response?.status === 401) {
+          setError('Invalid email or password.');
+        } else {
+          setError('Something went wrong. Please try again.');
+        }
+      } else {
+        setError('Unable to connect. Check your network and try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

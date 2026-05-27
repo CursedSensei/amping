@@ -1,14 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Wifi, AlertCircle, ChevronRight, LogOut } from 'lucide-react';
+import { Zap, Wifi, AlertCircle, ChevronRight } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import RiskBadge from '../components/RiskBadge';
 import HeartQuota from '../components/HeartQuota';
-import { MOCK_PATIENTS, type Patient } from '../data/mockData';
+import { type Patient } from '../data/mockData';
+import { getPatients } from '../services/api';
+import { toPatientListEntry } from '../services/adapters';
 
 type RiskFilter = 'all' | 'high' | 'low';
 
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function ComplianceDot({ status }: { status: 'done' | 'missed' | 'pending' }) {
   if (status === 'done')
@@ -104,19 +108,69 @@ function PatientCard({ patient }: { patient: Patient }) {
   );
 }
 
+// ─── Loading skeleton ─────────────────────────────────────────────────────────
+
+function PatientCardSkeleton() {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-6 animate-pulse">
+      <div className="flex items-start justify-between mb-4">
+        <div className="space-y-2">
+          <div className="h-5 w-40 bg-gray-200 rounded" />
+          <div className="h-3 w-24 bg-gray-100 rounded" />
+        </div>
+        <div className="h-6 w-16 bg-gray-100 rounded-full" />
+      </div>
+      <div className="h-3 w-32 bg-gray-100 rounded mb-5" />
+      <div className="flex gap-5 mb-4">
+        <div className="h-8 w-16 bg-gray-100 rounded" />
+        <div className="h-8 w-20 bg-gray-100 rounded" />
+      </div>
+      <div className="flex gap-1">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="w-7 h-7 rounded-full bg-gray-100" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function PatientRoster({ onLogout }: { onLogout?: () => void }) {
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
   const [filter, setFilter] = useState<RiskFilter>('all');
   const [search, setSearch] = useState('');
-  const navigate = useNavigate();
 
-  const filtered = MOCK_PATIENTS.filter((p) => {
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setFetchError('');
+
+    getPatients()
+      .then((res) => {
+        if (cancelled) return;
+        setPatients(res.patients.map((p) => toPatientListEntry(p) as Patient));
+      })
+      .catch(() => {
+        if (!cancelled) setFetchError('Failed to load patients. Please refresh.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  const filtered = patients.filter((p) => {
     const matchSearch =
       !search ||
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.patientId.toLowerCase().includes(search.toLowerCase());
     const matchFilter =
       filter === 'all' ||
-      (filter === 'high' && (p.riskTier === 'tier2' || p.riskTier === 'tier3' || p.riskTier === 'tier1')) ||
+      (filter === 'high' && (p.riskTier === 'tier1' || p.riskTier === 'tier2' || p.riskTier === 'tier3')) ||
       (filter === 'low' && p.riskTier === 'safe');
     return matchSearch && matchFilter;
   });
@@ -136,14 +190,26 @@ export default function PatientRoster({ onLogout }: { onLogout?: () => void }) {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Patient Roster</h1>
             <p className="text-sm text-gray-400 mt-0.5">
-              {filtered.length} patient{filtered.length !== 1 ? 's' : ''} shown
+              {loading
+                ? 'Loading…'
+                : `${filtered.length} patient${filtered.length !== 1 ? 's' : ''} shown`}
             </p>
           </div>
         </div>
 
-        {/* Cards grid */}
+        {/* Error banner */}
+        {fetchError && (
+          <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 mb-6">
+            <AlertCircle size={15} className="shrink-0" />
+            {fetchError}
+          </div>
+        )}
+
+        {/* Cards */}
         <div className="flex flex-col gap-4">
-          {filtered.length === 0 ? (
+          {loading ? (
+            Array.from({ length: 3 }).map((_, i) => <PatientCardSkeleton key={i} />)
+          ) : filtered.length === 0 ? (
             <div className="text-center py-16 text-gray-400">
               <p className="text-lg font-medium">No patients found</p>
               <p className="text-sm mt-1">Try adjusting your search or filter.</p>
