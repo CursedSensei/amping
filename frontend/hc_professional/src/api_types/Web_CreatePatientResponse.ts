@@ -1,3 +1,3 @@
 export interface WebCreatePatientResponse {
-    message: string;
+    id: number;
 }

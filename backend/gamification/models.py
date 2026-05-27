@@ -9,10 +9,14 @@ class PatientStats(models.Model):
     id = models.AutoField(primary_key=True)
     patient = models.OneToOneField('users.PatientUser', on_delete=models.CASCADE, related_name='stats')
 
+    regimen_start_date = models.DateField()
     total_regimen_days = models.IntegerField(default=0)
+    current_day = models.IntegerField(default=0)
     current_streak = models.IntegerField(default=0)
     best_streak = models.IntegerField(default=0)
     heart_quota = models.IntegerField(default=3)
+
+    month3_protected = models.BooleanField(default=False)
 
 class PenaltyEvent(models.Model):
     id = models.AutoField(primary_key=True)

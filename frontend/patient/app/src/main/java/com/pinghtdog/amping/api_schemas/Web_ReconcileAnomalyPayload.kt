@@ -22,5 +22,12 @@ data class WebReconcileAnomalyPayload (
     val reason: String,
 
     @SerialName("verification_method")
-    val verificationMethod: String
+    val verificationMethod: ReconciliationMethodEnum
 )
+
+@Serializable
+enum class ReconciliationMethodEnum(val value: String) {
+    @SerialName("dot_order") DotOrder("dot_order"),
+    @SerialName("home_visit") HomeVisit("home_visit"),
+    @SerialName("send_message") SendMessage("send_message");
+}
