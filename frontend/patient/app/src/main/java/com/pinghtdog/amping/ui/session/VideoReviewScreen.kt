@@ -1,17 +1,20 @@
 package com.pinghtdog.amping.ui.session
 
+import android.net.Uri
+import android.widget.VideoView
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -20,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.pinghtdog.amping.ui.theme.CyanPrimary
 import com.pinghtdog.amping.ui.theme.LightBackground
 import com.pinghtdog.amping.ui.theme.TextDark
@@ -32,6 +36,8 @@ fun VideoReviewScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var videoViewRef by remember { mutableStateOf<VideoView?>(null) }
+    var isPlaying by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -86,18 +92,59 @@ fun VideoReviewScreen(
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable {
+                            val player = videoViewRef ?: return@clickable
+                            if (isPlaying) {
+                                player.pause()
+                                isPlaying = false
+                            } else {
+                                player.start()
+                                isPlaying = true
+                            }
+                        },
                     contentAlignment = Alignment.Center
                 ) {
-                    // Simulated Play Button
-                    Box(
+                    // Real native VideoView wrapper
+                    AndroidView(
+                        factory = { ctx ->
+                            VideoView(ctx).apply {
+                                videoViewRef = this
+                                setOnCompletionListener {
+                                    isPlaying = false
+                                }
+                            }
+                        },
+                        update = { videoView ->
+                            val path = uiState.recordedVideoPath
+                            if (path != null) {
+                                try {
+                                    videoView.setVideoURI(Uri.parse(path))
+                                    videoView.seekTo(1) // Seek to 1ms to load preview frame
+                                } catch (e: Exception) {
+                                    android.util.Log.e("VideoReview", "Error loading video: ${e.message}", e)
+                                }
+                            }
+                        },
                         modifier = Modifier
-                            .size(72.dp)
-                            .clip(RoundedCornerShape(36.dp))
-                            .background(Color.White.copy(alpha = 0.2f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        IconButton(onClick = { /* Simulated Play */ }) {
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(24.dp))
+                    )
+
+                    // Simulated/Interactive Play Overlay Button
+                    if (!isPlaying) {
+                        Box(
+                            modifier = Modifier
+                                .size(72.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.25f))
+                                .clickable {
+                                    videoViewRef?.start()
+                                    isPlaying = true
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
                             Icon(
                                 Icons.Filled.PlayArrow,
                                 contentDescription = "Play Video",
@@ -106,13 +153,15 @@ fun VideoReviewScreen(
                             )
                         }
                     }
+
                     Text(
-                        text = "Recorded Video Preview (0:15)",
-                        color = Color.LightGray,
+                        text = "Touch to Play/Pause Preview",
+                        color = Color.LightGray.copy(alpha = 0.6f),
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .padding(bottom = 16.dp),
-                        fontSize = 13.sp
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
@@ -143,7 +192,11 @@ fun VideoReviewScreen(
                 } else {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Button(
-                            onClick = { viewModel.uploadVideo() },
+                            onClick = {
+                                videoViewRef?.pause()
+                                isPlaying = false
+                                viewModel.uploadVideo()
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(56.dp),
@@ -162,7 +215,12 @@ fun VideoReviewScreen(
                         Spacer(modifier = Modifier.height(12.dp))
 
                         OutlinedButton(
-                            onClick = { viewModel.startCameraRecording() },
+                            onClick = {
+                                videoViewRef?.stopPlayback()
+                                videoViewRef = null
+                                isPlaying = false
+                                viewModel.startCameraRecording()
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(56.dp),
