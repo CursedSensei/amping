@@ -212,12 +212,33 @@ def create_secure_proxy_app():
             patient_id = payload.get("sub")
             profile = payload.get("profile", "adult").lower()
             current_phase = payload.get("current_phase", "empathy").lower()
+            motivation = payload.get("motivation", "")
             
             print(f"Token verified! Patient: {patient_id}, Profile: {profile}, Active Phase: {current_phase}")
 
             # 2. Await prompt text frame from Ktor WebSocket
             prompt = await websocket.receive_text()
             print(f"Received patient prompt: '{prompt}'")
+
+            # --- Programmatic Fail-safe for VDOT Upload Complete ---
+            if "vdot upload complete" in prompt.lower() or "upload complete" in prompt.lower() or "ingestion complete" in prompt.lower():
+                motivation_text = f" because of '{motivation}'" if motivation else ""
+                congratulations = {
+                    "youth": f"Awesome job, champion! You successfully completed today's check-in and uploaded your VDOT video. Remember the reason why you are taking this medication{motivation_text}! Keep that streak alive!",
+                    "senior": f"Splendid work, Lola. You have successfully completed your daily medication check-in and video upload. Remember the reason why you are taking this medication{motivation_text}. Your health is so precious, dear.",
+                    "adult": f"Ingestion verification video uploaded successfully. Remember the reason why you are taking this medication{motivation_text}. Compliance log updated."
+                }.get(profile, f"Medication video uploaded successfully. Remember the reason why you are taking this medication{motivation_text}.")
+                
+                response_content = f"{congratulations}\n\n<tool_call> {{\"name\": \"transition_to_success\"}} </tool_call>"
+                await websocket.send_text(json.dumps({
+                    "type": "token",
+                    "content": response_content
+                }))
+                await websocket.send_text(json.dumps({
+                    "type": "done"
+                }))
+                await websocket.close()
+                return
 
             # Check if background vLLM daemon is still binding weights.
             # If so, stream friendly live status updates directly to the client rather than hanging!
@@ -237,7 +258,12 @@ def create_secure_proxy_app():
                 f"You are 'Gabby', an AI conversational health companion designed to motivate TB patients.\n"
                 f"Tailor your vocabulary, level of gamification, and empathy to the active profile: {profile}.\n"
                 f"Active Phase Instructions:\n{phase_instruction}\n"
-                f"CRITICAL STYLE RULES:\n"
+            )
+            if motivation:
+                system_prompt += f"\nThe patient's personal motivation for continuing treatment is: '{motivation}'. Refer to this motivation to encourage and inspire them."
+
+            system_prompt += (
+                f"\nCRITICAL STYLE RULES:\n"
                 f"- STRICTLY AVOID USING EMOJIS: Do not use any emojis, icons, emoticons, or decorative symbols under any circumstances. All your replies must contain plain text only.\n"
                 f"- USE MINIMAL LANGUAGE: Be extremely concise, direct, and brief. Use minimal sentences. Avoid extra explanations or chatty filler text.\n"
                 f"- PROFESSIONAL CHILD-LIKE MANNERISM: Maintain a professional, clinically supportive, and safe tone, but express it with innocent, simple, child-like mannerisms (using simple words, gentle vocabulary, straightforward instructions, and honest guidance)."
