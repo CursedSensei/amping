@@ -378,7 +378,7 @@ Possible return codes:
 Request payload: `Web_ReconcileAnomalyPayload`
 - `entry_ids` (list[int]): IDs of entries to reconcile
 - `reason` (string): provider's note/reason for reconciliation
-- `verification_method` (string): e.g. `phone_call`, `in_person`
+- `verification_method` (ReconciliationMethodEnum): (`home_visit`, `dot_order`, `send_message`)
 
 Response: `Web_ReconcileAnomalyResponse`
 - `reconciled_count` (int)

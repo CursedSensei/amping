@@ -67,8 +67,9 @@ def reconcile_anomalies(request: HttpRequest, patient_id: int, payload: Web_Reco
                 if record.status not in [AdherenceStatusEnum.TECHNICAL_MISS, AdherenceStatusEnum.UNVERIFIED_ABSENCE]:
                     reconciled_count -= 1
                     continue
-                record.status = payload.verification_method
+                record.status = AdherenceStatusEnum.PROVIDER_RECONCILED
                 record.reconciliation_note = payload.reason
+                record.reconciliation_method = payload.verification_method
                 record.save()
             except AdherenceDayRecord.DoesNotExist:
                 reconciled_count -= 1
