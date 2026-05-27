@@ -24,16 +24,19 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.13'
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Install uv
+        run: pip install uv
+      
+      - name: Install project dependencies
+        run: uv sync
 
       - name: install quicktype
         run: npm install -g quicktype
 
       - name: Generate and export API Schemas
-        run: python export_schemas.py
+        run: uv export_schemas.py
 
       - name: Commit and Push
         run: |
