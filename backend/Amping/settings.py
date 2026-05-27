@@ -49,12 +49,17 @@ if DEBUG:
 else:
     CORS_ALLOWED_ORIGINS = [
         # TODO: Add production frontend URL here
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
     ]
     ALLOWED_HOSTS = [
         # TODO: Add production backend URL here
+        'amping.onrender.com'
     ]
     CSRF_TRUSTED_ORIGINS = [
         # TODO: Add production frontend URL here
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
     ]
 
 
