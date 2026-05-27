@@ -9,56 +9,61 @@
  */
 
 import axios from 'axios';
-import type { WebLoginHealthProviderPayload } from '../api_types/Web_LoginHealthProviderPayload';
-import type { WebLoginHealthProviderResponse } from '../api_types/Web_LoginHealthProviderResponse';
-import type { WebLogoutResponse } from '../api_types/Web_LogoutResponse';
-import type { WebPatientListResponse } from '../api_types/Web_PatientListResponse';
-import type { WebPatientDetailResponse } from '../api_types/Web_PatientDetailResponse';
-import type { WebAdherenceMonthResponse } from '../api_types/Web_AdherenceMonthResponse';
 import type { WebAdherenceMonthRequest } from '../api_types/Web_AdherenceMonthRequest';
-import type { WebGamificationResponse } from '../api_types/Web_GamificationResponse';
+import type { WebAdherenceMonthResponse } from '../api_types/Web_AdherenceMonthResponse';
 import type { WebAnomalousEntriesResponse } from '../api_types/Web_AnomalousEntriesResponse';
+import type { WebGamificationResponse } from '../api_types/Web_GamificationResponse';
+import type { WebPatientDetailResponse } from '../api_types/Web_PatientDetailResponse';
+import type { WebPatientListResponse } from '../api_types/Web_PatientListResponse';
 import type { WebReconcileAnomalyPayload } from '../api_types/Web_ReconcileAnomalyPayload';
 import type { WebReconcileAnomalyResponse } from '../api_types/Web_ReconcileAnomalyResponse';
 
 // ─── Axios instance ──────────────────────────────────────────────────────────
 
-const client = axios.create({
+const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1/web';
+
+export const client = axios.create({
   withCredentials: true, // send/receive Django session cookie
   headers: { 'Content-Type': 'application/json' },
+  baseURL: baseURL,
 });
 
-// Redirect to /login on any 401
-client.interceptors.response.use(
-  (res) => res,
-  (err) => {
-    if (axios.isAxiosError(err) && err.response?.status === 401) {
-      window.location.replace('/login');
-    }
-    return Promise.reject(err);
-  },
-);
+client.defaults.xsrfCookieName = 'csrftoken';
+client.defaults.xsrfHeaderName = 'X-CSRFToken';
+client.defaults.withXSRFToken = true
 
-// ─── Auth ────────────────────────────────────────────────────────────────────
 
-/** POST /api/v1/web/login/ */
-export async function login(
-  email: string,
-  password: string,
-): Promise<WebLoginHealthProviderResponse> {
-  const payload: WebLoginHealthProviderPayload = { email, password };
-  const res = await client.post<WebLoginHealthProviderResponse>(
-    '/api/v1/web/login/',
-    payload,
-  );
-  return res.data;
-}
+// TODO: CSRF handing for cross-site with Render deployment.
+//
+// axios.defaults.xsrfCookieName = 'csrftoken';
+// axios.defaults.xsrfHeaderName = 'X-CSRFToken';
+// axios.defaults.withCredentials = true;
 
-/** POST /api/v1/web/logout/ */
-export async function logout(): Promise<WebLogoutResponse> {
-  const res = await client.post<WebLogoutResponse>('/api/v1/web/logout/');
-  return res.data;
-}
+// let csrfToken: string | null = null;
+// let csrfPromise: Promise<string> | null = null;
+
+// async function fetchCsrfToken() {
+//   if (csrfToken) return csrfToken;
+//   if (csrfPromise) return csrfPromise;
+
+//   csrfPromise = axios.get<{ csrfToken: string }>(baseURL + '/csrf/')
+//     .then((res) => {
+//       csrfToken = res.data.csrfToken;
+//       return csrfToken;
+//     })
+//     .finally(() => {
+//       csrfPromise = null;
+//     });
+
+//   return csrfPromise;
+// }
+
+// client.interceptors.request.use(config => {
+//   config.headers = config.headers || {};
+//   config.headers["X-CSRFToken"] = fetchCsrfToken();
+
+//   return config;
+// });
 
 // ─── Patients ────────────────────────────────────────────────────────────────
 

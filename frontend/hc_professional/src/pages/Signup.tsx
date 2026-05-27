@@ -1,14 +1,10 @@
+import { AlertCircle, CheckCircle2, Eye, EyeOff, Loader2, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 
 const ROLES = ['Doctor / Physician', 'Nurse', 'Barangay Health Worker (BHW)', 'Health Center Admin'];
 
-interface SignupProps {
-  onLogin: () => void;
-}
-
-export default function Signup({ onLogin }: SignupProps) {
+export default function Signup() {
   const navigate = useNavigate();
   const [form, setForm] = useState({
     fullName: '',
@@ -57,7 +53,7 @@ export default function Signup({ onLogin }: SignupProps) {
     // Auto-login after signup
     await new Promise((r) => setTimeout(r, 1400));
     sessionStorage.setItem('hc_auth', 'true');
-    onLogin();
+    // onLogin();
     navigate('/', { replace: true });
   };
 

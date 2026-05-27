@@ -1,20 +1,18 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
 import axios from 'axios';
-import { login as apiLogin } from '../services/api';
+import { AlertCircle, Eye, EyeOff, Loader2, ShieldCheck } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
-interface LoginProps {
-  onLogin: () => void;
-}
-
-export default function Login({ onLogin }: LoginProps) {
+export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const { login: apiLogin } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,13 +34,11 @@ export default function Login({ onLogin }: LoginProps) {
     setLoading(true);
     try {
       await apiLogin(email, password);
-      onLogin();
       navigate('/', { replace: true });
     } catch (err) {
       if (axios.isAxiosError(err)) {
         if (err.response?.status === 400) {
           // Already authenticated — just go home
-          onLogin();
           navigate('/', { replace: true });
         } else if (err.response?.status === 401) {
           setError('Invalid email or password.');

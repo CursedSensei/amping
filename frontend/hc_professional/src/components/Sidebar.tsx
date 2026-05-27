@@ -1,6 +1,7 @@
+import { AlertTriangle, LogOut, Search, Shield, Users } from 'lucide-react';
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Search, Shield, Users, AlertTriangle, LogOut } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { MOCK_PATIENTS } from '../data/mockData';
 
 type RiskFilter = 'all' | 'high' | 'low';
@@ -9,13 +10,14 @@ interface SidebarProps {
   onSearch?: (q: string) => void;
   onFilter?: (f: RiskFilter) => void;
   activeFilter?: RiskFilter;
-  onLogout?: () => void;
 }
 
-export default function Sidebar({ onSearch, onFilter, activeFilter = 'all', onLogout }: SidebarProps) {
+export default function Sidebar({ onSearch, onFilter, activeFilter = 'all' }: SidebarProps) {
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
+
+  const {logout} = useAuth();
 
   const handleSearch = (val: string) => {
     setQuery(val);
@@ -121,7 +123,7 @@ export default function Sidebar({ onSearch, onFilter, activeFilter = 'all', onLo
             <p className="text-white text-xs font-medium truncate">Dr. Alicia Tan</p>
             <p className="text-[11px] text-gray-500 truncate">Lapu-Lapu City HO</p>
           </div>
-          <LogOut size={14} className="shrink-0 cursor-pointer hover:text-white transition-colors" onClick={onLogout} />
+          <LogOut size={14} className="shrink-0 cursor-pointer hover:text-white transition-colors" onClick={logout} />
         </div>
       </div>
     </aside>

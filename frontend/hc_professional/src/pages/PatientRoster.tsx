@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
+import { AlertCircle, ChevronRight, Wifi, Zap } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Wifi, AlertCircle, ChevronRight } from 'lucide-react';
-import Sidebar from '../components/Sidebar';
-import RiskBadge from '../components/RiskBadge';
 import HeartQuota from '../components/HeartQuota';
+import RiskBadge from '../components/RiskBadge';
+import Sidebar from '../components/Sidebar';
 import { type Patient } from '../data/mockData';
-import { getPatients } from '../services/api';
 import { toPatientListEntry } from '../services/adapters';
+import { getPatients } from '../services/api';
 
 type RiskFilter = 'all' | 'high' | 'low';
 
@@ -136,7 +136,7 @@ function PatientCardSkeleton() {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function PatientRoster({ onLogout }: { onLogout?: () => void }) {
+export default function PatientRoster() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
@@ -181,7 +181,6 @@ export default function PatientRoster({ onLogout }: { onLogout?: () => void }) {
         onSearch={setSearch}
         onFilter={setFilter}
         activeFilter={filter}
-        onLogout={onLogout}
       />
 
       <main className="flex-1 p-8 overflow-y-auto h-full">

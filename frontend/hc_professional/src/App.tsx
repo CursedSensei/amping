@@ -1,21 +1,17 @@
-import { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import Login from './pages/Login';
-import Signup from './pages/Signup';
-import PatientRoster from './pages/PatientRoster';
-import UnifiedAdherenceRecord from './pages/UnifiedAdherenceRecord';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import DoseReconciliation from './pages/DoseReconciliation';
+import Login from './pages/Login';
+import PatientRoster from './pages/PatientRoster';
 import RiskStratification from './pages/RiskStratification';
-import { logout as apiLogout } from './services/api';
+import Signup from './pages/Signup';
+import UnifiedAdherenceRecord from './pages/UnifiedAdherenceRecord';
 
 // ─── Page transition wrapper ────────────────────────────────────────────────
 
-function AnimatedRoutes({ isAuthed, onLogin, onLogout }: {
-  isAuthed: boolean;
-  onLogin: () => void;
-  onLogout: () => void;
-}) {
+function AnimatedRoutes() {
   const location = useLocation();
+  const { isAuthenticated} = useAuth();
 
   return (
     <div
@@ -27,33 +23,33 @@ function AnimatedRoutes({ isAuthed, onLogin, onLogout }: {
         {/* Public routes */}
         <Route
           path="/login"
-          element={isAuthed ? <Navigate to="/" replace /> : <Login onLogin={onLogin} />}
+          element={isAuthenticated ? <Navigate to="/" replace /> : <Login />}
         />
         <Route
           path="/signup"
-          element={isAuthed ? <Navigate to="/" replace /> : <Signup onLogin={onLogin} />}
+          element={isAuthenticated ? <Navigate to="/" replace /> : <Signup />}
         />
 
         {/* Protected routes */}
         <Route
           path="/"
-          element={isAuthed ? <PatientRoster onLogout={onLogout} /> : <Navigate to="/login" replace />}
+          element={isAuthenticated ? <PatientRoster /> : <Navigate to="/login" replace />}
         />
         <Route
           path="/patient/:id"
-          element={isAuthed ? <UnifiedAdherenceRecord /> : <Navigate to="/login" replace />}
+          element={isAuthenticated ? <UnifiedAdherenceRecord /> : <Navigate to="/login" replace />}
         />
         <Route
           path="/patient/:id/reconcile"
-          element={isAuthed ? <DoseReconciliation /> : <Navigate to="/login" replace />}
+          element={isAuthenticated ? <DoseReconciliation /> : <Navigate to="/login" replace />}
         />
         <Route
           path="/risk"
-          element={isAuthed ? <RiskStratification /> : <Navigate to="/login" replace />}
+          element={isAuthenticated ? <RiskStratification /> : <Navigate to="/login" replace />}
         />
 
         {/* Fallback */}
-        <Route path="*" element={<Navigate to={isAuthed ? '/' : '/login'} replace />} />
+        <Route path="*" element={<Navigate to={isAuthenticated ? '/' : '/login'} replace />} />
       </Routes>
     </div>
   );
@@ -62,21 +58,6 @@ function AnimatedRoutes({ isAuthed, onLogin, onLogout }: {
 // ─── Root ────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  // Django session cookie is the source of truth — start unauthenticated.
-  // The 401 interceptor in api.ts will redirect to /login if the cookie expires.
-  const [isAuthed, setIsAuthed] = useState(false);
-
-  const handleLogin = () => setIsAuthed(true);
-
-  const handleLogout = async () => {
-    try {
-      await apiLogout();
-    } catch {
-      // Ignore errors — clear local state regardless so UI reflects logged-out
-    }
-    setIsAuthed(false);
-  };
-
   return (
     <>
       <style>{`
@@ -85,9 +66,11 @@ export default function App() {
           to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>
-      <BrowserRouter>
-        <AnimatedRoutes isAuthed={isAuthed} onLogin={handleLogin} onLogout={handleLogout} />
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <AnimatedRoutes/>
+        </BrowserRouter>
+      </AuthProvider>
     </>
   );
 }
