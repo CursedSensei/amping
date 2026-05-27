@@ -1,14 +1,29 @@
 from Amping.schemas import ApiSchema
 from datetime import date
 
-class Web_CreatePatientPayload(ApiSchema):
-    name: str
+class Web_PatientGuardianEntry(ApiSchema):
+    id: int
+    firstname: str
+    lastname: str
     email: str
     contact: str
-    age: int
+
+
+
+class Web_CreatePatientPayload(ApiSchema):
+    id: int
+    firstname: str
+    lastname: str
+    email: str
+    contact: str
+    birthyear: int
+    guardians: list[Web_PatientGuardianEntry]
+
+    regimen_start: date
+    total_days: int
 
 class Web_CreatePatientResponse(ApiSchema):
-    message: str
+    id: int
 
 class Web_LoginHealthProviderPayload(ApiSchema):
     email: str
@@ -27,15 +42,18 @@ class Mobile_RefreshTokenResponse(ApiSchema):
     access_token: str
 
 
-
-class Web_PatientDetailResponse(ApiSchema):
-    class Web_PatientGuardianEntry(ApiSchema):
+class Web_GetAllPatientsResponse(ApiSchema):
+    class Web_PatientEntry(ApiSchema):
         id: int
         firstname: str
         lastname: str
         email: str
         contact: str
+        birthyear: int
 
+    patients: list[Web_PatientEntry]
+
+class Web_PatientDetailResponse(ApiSchema):
     id: int
     firstname: str
     lastname: str
@@ -60,6 +78,22 @@ class Web_HealthCareProviderDetailResponse(ApiSchema):
     contact: str
     clinic: str
 
+
+class Mobile_PatientProfileResponse(ApiSchema):
+    id: int
+    firstname: str
+    lastname: str
+    email: str
+    contact: str
+    birthyear: int
+
+    regimen_start: date
+    current_day: int
+    total_days: int
+
+class Mobile_HealthCareProviderProfileResponse(Web_HealthCareProviderDetailResponse):
+    pass
+
 __ALL__ = [
     "Web_CreatePatientPayload",
     "Web_CreatePatientResponse",
@@ -70,4 +104,7 @@ __ALL__ = [
     "Mobile_RefreshTokenResponse",
     "Web_PatientDetailResponse",
     "Web_HealthCareProviderDetailResponse",
+    "Mobile_PatientProfileResponse",
+    "Mobile_HealthCareProviderProfileResponse",
+    "Web_GetAllPatientsResponse"
 ]
