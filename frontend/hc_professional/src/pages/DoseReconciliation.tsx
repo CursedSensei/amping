@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ShieldCheck, ChevronRight, Zap, CheckCircle2, X, Loader2, AlertCircle } from 'lucide-react';
-import { type AnomalousEntry } from '../data/mockData';
-import { getPatient, getAnomalousEntries, reconcileAnomalies } from '../services/api';
-import { toAnomalousEntry } from '../services/adapters';
+import { AlertCircle, ArrowLeft, CheckCircle2, ChevronRight, Loader2, ShieldCheck, X, Zap } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import type { WebPatientDetailResponse } from '../api_types/Web_PatientDetailResponse';
+import { ReconciliationMethodEnum } from '../api_types/Web_ReconcileAnomalyPayload';
+import { type AnomalousEntry } from '../data/mockData';
+import { toAnomalousEntry } from '../services/adapters';
+import { getAnomalousEntries, getPatient, reconcileAnomalies } from '../services/api';
 
 // ─── Status config ──────────────────────────────────────────────────────────
 
@@ -62,9 +63,9 @@ function ReconcileModal({
   entries: AnomalousEntry[];
   submitting: boolean;
   onClose: () => void;
-  onConfirm: (method: string, reason: string) => void;
+  onConfirm: (method: ReconciliationMethodEnum, reason: string) => void;
 }) {
-  const [method, setMethod] = useState('Home Visit');
+  const [method, setMethod] = useState(ReconciliationMethodEnum.HomeVisit);
   const [reason, setReason] = useState('');
 
   return (
@@ -108,13 +109,12 @@ function ReconcileModal({
             </label>
             <select
               value={method}
-              onChange={(e) => setMethod(e.target.value)}
+              onChange={(e) => setMethod(e.target.value as ReconciliationMethodEnum)}
               className="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-300 transition-shadow"
             >
-              <option>Home Visit</option>
-              <option>Clinic Visit</option>
-              <option>Phone Verification</option>
-              <option>Physical Treatment Card</option>
+              <option value={ReconciliationMethodEnum.HomeVisit}>Home Visit</option>
+              <option value={ReconciliationMethodEnum.DotOrder}>DOT Order</option>
+              <option value={ReconciliationMethodEnum.SendMessage}>Send Message</option>
             </select>
           </div>
 
@@ -240,7 +240,7 @@ export default function DoseReconciliation() {
     });
   };
 
-  const handleConfirm = async (method: string, reason: string) => {
+  const handleConfirm = async (method: ReconciliationMethodEnum, reason: string) => {
     // Build numeric entry_ids from the rawIds map
     const entryIds: number[] = [];
     for (const localId of selected) {
