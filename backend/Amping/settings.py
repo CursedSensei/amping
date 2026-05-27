@@ -37,7 +37,9 @@ if DEBUG:
 
     ALLOWED_HOSTS = [
         'localhost',
-        '127.0.0.1'
+        '127.0.0.1',
+        '10.0.2.2',
+        '*',
     ]
     CORS_ALLOWED_ORIGINS = [
         "http://localhost:5173",
@@ -116,7 +118,11 @@ DATABASES = {
         'PASSWORD': os.getenv('DB_PASSWORD'),
         'HOST': os.getenv('DB_HOST'),
         'PORT': os.getenv('DB_PORT'),
-    }
+    },
+#   'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
 }
 
 

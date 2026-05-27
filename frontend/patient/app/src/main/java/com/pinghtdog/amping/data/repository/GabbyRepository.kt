@@ -36,6 +36,9 @@ interface GabbyRepository {
     
     // Handshake to request credentials / session token
     suspend fun fetchSessionToken(userId: String): SessionTokenResponse
+
+    // Upload video bytes to backend
+    suspend fun uploadVideo(videoBytes: ByteArray): String
 }
 
 @Singleton
@@ -66,6 +69,19 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
             return jsonParser.decodeFromString<SessionTokenResponse>(responseText)
         } catch (e: Exception) {
             throw IOException("Network error: Failed to connect to server gateway. Please ensure your webserver is running locally. (${e.localizedMessage ?: "Connection refused"})", e)
+        }
+    }
+
+    override suspend fun uploadVideo(videoBytes: ByteArray): String {
+        try {
+            val responseText = httpClient.post {
+                url("http://10.0.2.2:3000/api/upload_video")
+                contentType(ContentType.Application.OctetStream)
+                setBody(videoBytes)
+            }.bodyAsText()
+            return responseText
+        } catch (e: Exception) {
+            throw IOException("Failed to upload VDOT video to server: ${e.localizedMessage}", e)
         }
     }
 
