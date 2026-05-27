@@ -30,8 +30,10 @@ def fetch_chat_session_token(request):
     try:
         body = json.loads(request.body)
         user_id = body.get("userId", "adult").lower() # e.g. "youth", "senior", "adult"
+        motivation = body.get("motivation", "")
     except Exception:
         user_id = "adult"
+        motivation = ""
 
     patient = None
     
@@ -47,7 +49,7 @@ def fetch_chat_session_token(request):
         patient = MockPatient(user_id)
 
     # 3. Generate token
-    token = generate_modal_access_token(patient)
+    token = generate_modal_access_token(patient, motivation)
     
     # 4. Read Modal URL from environment or configuration
     modal_url = os.getenv("MODAL_API_URL", "https://gabby-hermes-4-secure-serve.modal.run")

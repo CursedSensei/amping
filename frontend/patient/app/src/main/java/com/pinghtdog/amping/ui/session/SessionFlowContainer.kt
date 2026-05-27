@@ -43,6 +43,12 @@ fun SessionFlowContainer(
                 SessionPhase.VDOT_REVIEW -> {
                     VideoReviewScreen(viewModel = viewModel)
                 }
+                SessionPhase.VDOT_SYNCING -> {
+                    VdotSyncingScreen(viewModel = viewModel)
+                }
+                SessionPhase.VDOT_QUEUE -> {
+                    OfflineQueueScreen(viewModel = viewModel, onGoHome = onGoHome)
+                }
                 SessionPhase.SUCCESS -> {
                     SuccessScreen(
                         viewModel = viewModel,

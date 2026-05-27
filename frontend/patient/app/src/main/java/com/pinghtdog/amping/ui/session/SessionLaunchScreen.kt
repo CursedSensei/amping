@@ -327,7 +327,7 @@ fun SessionLaunchScreen(
             // Display last user message during the conversation
             val lastUserMessage = uiState.chatHistory.lastOrNull { it.role == "user" }
             AnimatedVisibility(
-                visible = lastUserMessage != null && !lastUserMessage.content.isNullOrBlank(),
+                visible = lastUserMessage != null && !lastUserMessage.content.isNullOrBlank() && !lastUserMessage.content.startsWith("VDOT upload complete"),
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
@@ -416,6 +416,59 @@ fun SessionLaunchScreen(
                 }
             }
 
+            // "I'm Ready" Fallback Button for Intent Parsing Failure
+            AnimatedVisibility(
+                visible = uiState.conversationStage == 3 && uiState.vdotRepromptCount >= 2 && !uiState.assistantTyping,
+                enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }) + expandVertically(),
+                exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 }) + shrinkVertically()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.bypassToolCallToVideoRecording() }
+                            .graphicsLayer {
+                                shadowElevation = 12f
+                                clip = true
+                            },
+                        shape = RoundedCornerShape(20.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Brush.linearGradient(gradientColors))
+                                .padding(horizontal = 20.dp, vertical = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Videocam,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Text(
+                                    text = "I'M READY (START VDOT CAMERA)",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 14.sp,
+                                    letterSpacing = 1.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Quick Replies Panel
             AnimatedVisibility(
                 visible = uiState.quickReplies.isNotEmpty() && !uiState.assistantTyping,
@@ -440,14 +493,21 @@ fun SessionLaunchScreen(
                             elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
                             shape = RoundedCornerShape(20.dp),
                             modifier = Modifier
-                                .height(38.dp)
+                                .weight(1f)
+                                .heightIn(min = 38.dp)
                                 .border(
                                     width = 1.dp,
                                     color = primaryColor.copy(alpha = 0.3f),
                                     shape = RoundedCornerShape(20.dp)
-                                )
+                                ),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                         ) {
-                            Text(text = reply, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = reply, 
+                                fontSize = 12.sp, 
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center
+                            )
                         }
                     }
                 }

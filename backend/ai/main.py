@@ -81,6 +81,7 @@ class ChatMessage(BaseModel):
 class ChatPayload(BaseModel):
     messages: List[ChatMessage]
     profile: str
+    motivation: Optional[str] = None
 
 class UpdateProfileRequest(BaseModel):
     profile: str
@@ -287,6 +288,24 @@ async def chat_endpoint(payload: ChatPayload):
     last_user_message = messages[-1].content.lower() if messages else ""
     last_user_words = set(re.findall(r'\b\w+\b', last_user_message))
     
+    # --- UPGRADE -0.5: VDOT UPLOAD COMPLETE INTERCEPT ---
+    if "vdot upload complete" in last_user_message or "upload complete" in last_user_message or "ingestion complete" in last_user_message:
+        motivation = payload.motivation or ""
+        motivation_text = f" because of '{motivation}'" if motivation else ""
+        congratulations = {
+            "youth": f"Awesome job, champion! You successfully completed today's check-in and uploaded your VDOT video. Remember the reason why you are taking this medication{motivation_text}! Keep that streak alive!",
+            "senior": f"Splendid work, Lola. You have successfully completed your daily medication check-in and video upload. Remember the reason why you are taking this medication{motivation_text}. Your health is so precious, dear.",
+            "adult": f"Ingestion verification video uploaded successfully. Remember the reason why you are taking this medication{motivation_text}. Compliance log updated."
+        }.get(profile, f"Medication video uploaded successfully. Remember the reason why you are taking this medication{motivation_text}.")
+        
+        response_content = f"{congratulations}\n\n<tool_call> {{\"name\": \"transition_to_success\"}} </tool_call>"
+        return {
+            "content": response_content,
+            "status": "success",
+            "current_phase": current_phase,
+            "clinical_notes": state.get("clinical_notes", {})
+        }
+
     # --- UPGRADE 0: CLINICAL CRISIS & SELF-HARM OVERRIDE ---
     crisis_keywords = ["kill myself", "harm myself", "hurt myself", "suicide", "end my life", "want to die", "hopeless", "give up", "cut myself", "self-harm", "wanna die", "die today"]
     is_harmful = any(kw in last_user_message for kw in crisis_keywords)

@@ -44,7 +44,8 @@ class SessionViewModel @Inject constructor(
 
     init {
         initializeTts()
-        initializeGreeting()
+        loadOfflineQueue()
+        startPeriodicBackgroundSync()
     }
 
     private fun initializeTts() {
@@ -55,6 +56,7 @@ class SessionViewModel @Inject constructor(
                     tts?.setLanguage(Locale.US)
                 }
                 setupUtteranceListener()
+                initializeGreeting()
             }
         }
     }
@@ -204,19 +206,26 @@ class SessionViewModel @Inject constructor(
         
         _uiState.update { state ->
             var nextPhase = state.currentPhase
+            var nextStage = state.conversationStage
             when (toolName) {
                 "show_symptom_checklist", "transition_to_symptoms" -> {
                     nextPhase = SessionPhase.SYMPTOM_LOGGING
+                    nextStage = 2
                 }
                 "transition_to_vdot" -> {
-                    nextPhase = SessionPhase.VDOT_CAPTURE
+                    nextPhase = SessionPhase.CONVERSATION
+                    nextStage = 3
                 }
                 "trigger_vdot" -> {
                     nextPhase = SessionPhase.VDOT_CAPTURE
                 }
+                "transition_to_success" -> {
+                    nextPhase = SessionPhase.SUCCESS
+                }
             }
             state.copy(
                 currentPhase = nextPhase,
+                conversationStage = nextStage,
                 pendingToolCallName = null,
                 pendingToolCallArgs = emptyMap()
             )
@@ -303,8 +312,19 @@ class SessionViewModel @Inject constructor(
 
     private suspend fun runNetworkChatFlow(prompt: String) {
         try {
+            // Read local motivation text file
+            val motivation = try {
+                val file = java.io.File(context.filesDir, "motivation.txt")
+                if (file.exists()) file.readText().trim() else ""
+            } catch (e: Exception) {
+                ""
+            }
+
             // 1. Fetch transient Session JWT Token
-            val sessionInfo = gabbyRepository.fetchSessionToken(_uiState.value.activeProfile)
+            val sessionInfo = gabbyRepository.fetchSessionToken(
+                userId = _uiState.value.activeProfile,
+                motivation = if (motivation.isNotEmpty()) motivation else null
+            )
 
             // Inject temporary streaming bubble
             val initialHistory = _uiState.value.chatHistory.toMutableList()
@@ -379,6 +399,8 @@ class SessionViewModel @Inject constructor(
             var emergencyReason: String? = state.emergencyState
             var pendingName: String? = null
             var pendingArgs: Map<String, String> = emptyMap()
+            var nextStage = state.conversationStage
+            var nextRepromptCount = state.vdotRepromptCount
 
             // Intercept and act upon tool calling emitted from Gabby
             response.toolCall?.let { tool ->
@@ -387,18 +409,35 @@ class SessionViewModel @Inject constructor(
                         emergencyReason = tool.arguments["reason"] ?: "Self-harm override activated"
                         nextPhase = SessionPhase.CONVERSATION
                     }
-                    "show_symptom_checklist", "transition_to_symptoms", "transition_to_vdot", "trigger_vdot" -> {
+                    "show_symptom_checklist", "transition_to_symptoms" -> {
                         // Defer transitions to allow user to read/hear TTS response first
+                        pendingName = tool.name
+                        pendingArgs = tool.arguments
+                        nextStage = 2
+                    }
+                    "transition_to_vdot" -> {
+                        pendingName = tool.name
+                        pendingArgs = tool.arguments
+                        nextStage = 3
+                    }
+                    "trigger_vdot", "transition_to_success" -> {
                         pendingName = tool.name
                         pendingArgs = tool.arguments
                     }
                 }
             }
 
+            // Increment re-prompt count if in Stage 3 and we didn't receive a trigger_vdot tool call
+            if (state.conversationStage == 3 && response.toolCall?.name != "trigger_vdot") {
+                nextRepromptCount++
+            }
+
             state.copy(
                 chatHistory = updatedMessages,
                 assistantTyping = false,
                 currentPhase = nextPhase,
+                conversationStage = nextStage,
+                vdotRepromptCount = nextRepromptCount,
                 emergencyState = emergencyReason,
                 pendingToolCallName = pendingName,
                 pendingToolCallArgs = pendingArgs
@@ -609,47 +648,228 @@ class SessionViewModel @Inject constructor(
 
     fun uploadVideo() {
         if (_uiState.value.isUploading) return
-        val videoPath = _uiState.value.recordedVideoPath
+        val videoPath = _uiState.value.recordedVideoPath ?: return
         val isNetworkMode = _uiState.value.isNetworkMode
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isUploading = true, uploadProgress = 0.1f) }
-            
+            _uiState.update { 
+                it.copy(
+                    currentPhase = SessionPhase.VDOT_SYNCING,
+                    isUploading = true,
+                    uploadProgressState = 0.0f,
+                    syncStatusText = "Encrypting VDOT payload..."
+                ) 
+            }
+
             try {
-                if (isNetworkMode && videoPath != null) {
-                    val file = java.io.File(videoPath)
-                    if (file.exists()) {
-                        _uiState.update { it.copy(uploadProgress = 0.3f) }
-                        val bytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            file.readBytes()
-                        }
-                        _uiState.update { it.copy(uploadProgress = 0.6f) }
-                        gabbyRepository.uploadVideo(bytes)
-                    }
-                } else {
-                    for (i in 2..8) {
-                        delay(200)
-                        _uiState.update { it.copy(uploadProgress = i * 0.1f) }
+                val originalBytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    if (videoPath.startsWith("content://")) {
+                        context.contentResolver.openInputStream(android.net.Uri.parse(videoPath))?.use { it.readBytes() } ?: ByteArray(0)
+                    } else {
+                        java.io.File(videoPath).readBytes()
                     }
                 }
                 
-                _uiState.update { it.copy(uploadProgress = 1.0f) }
-                delay(200)
+                _uiState.update { it.copy(uploadProgressState = 0.2f, syncStatusText = "Securing sandbox storage...") }
+                delay(300)
                 
+                val encryptedBytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    VideoEncryptor.encrypt(originalBytes)
+                }
+
+                val encryptedVideosDir = java.io.File(context.filesDir, "encrypted_videos")
+                if (!encryptedVideosDir.exists()) {
+                    encryptedVideosDir.mkdirs()
+                }
+                
+                val encryptedFile = java.io.File(encryptedVideosDir, "vdot_${System.currentTimeMillis()}.enc")
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    encryptedFile.writeBytes(encryptedBytes)
+                }
+                
+                _uiState.update { it.copy(uploadProgressState = 0.4f, syncStatusText = "Registering payload in offline queue...") }
+                delay(300)
+
+                val queueEntry = com.pinghtdog.amping.data.repository.OfflineQueueManager.addEntry(
+                    context, 
+                    encryptedFile.absolutePath, 
+                    _uiState.value.activeProfile
+                )
+                loadOfflineQueue()
+
+                val isConnected = isNetworkAvailable()
+                if (!isConnected && isNetworkMode) {
+                    com.pinghtdog.amping.data.repository.OfflineQueueManager.updateEntryStatus(context, queueEntry.id, "Failed")
+                    loadOfflineQueue()
+                    
+                    _uiState.update { 
+                        it.copy(
+                            isUploading = false,
+                            currentPhase = SessionPhase.VDOT_QUEUE
+                        ) 
+                    }
+                    return@launch
+                }
+
+                _uiState.update { it.copy(uploadProgressState = 0.6f, syncStatusText = "Opening secure transmission tunnel...") }
+                delay(300)
+                
+                if (isNetworkMode) {
+                    _uiState.update { it.copy(uploadProgressState = 0.8f, syncStatusText = "Uploading encrypted blocks via HTTPS...") }
+                    
+                    com.pinghtdog.amping.data.repository.OfflineQueueManager.updateEntryStatus(context, queueEntry.id, "Uploading")
+                    loadOfflineQueue()
+                    
+                    gabbyRepository.uploadVideo(encryptedBytes)
+                    
+                    com.pinghtdog.amping.data.repository.OfflineQueueManager.removeEntry(context, queueEntry.id)
+                    loadOfflineQueue()
+                } else {
+                    for (i in 6..9) {
+                        delay(200)
+                        _uiState.update { it.copy(uploadProgressState = i * 0.1f, syncStatusText = "Simulating HTTPS transfer...") }
+                    }
+                    com.pinghtdog.amping.data.repository.OfflineQueueManager.removeEntry(context, queueEntry.id)
+                    loadOfflineQueue()
+                }
+
+                _uiState.update { it.copy(uploadProgressState = 1.0f, syncStatusText = "Server verification complete!") }
+                delay(300)
+
                 _uiState.update {
                     it.copy(
                         isUploading = false,
-                        currentPhase = SessionPhase.SUCCESS,
+                        currentPhase = SessionPhase.CONVERSATION,
                         streakCount = it.streakCount + 1
                     )
                 }
+
+                val motivation = try {
+                    val file = java.io.File(context.filesDir, "motivation.txt")
+                    if (file.exists()) file.readText().trim() else ""
+                } catch (e: Exception) {
+                    ""
+                }
+
+                val uploadPrompt = if (motivation.isNotEmpty()) {
+                    "VDOT upload complete. Motivation: $motivation"
+                } else {
+                    "VDOT upload complete."
+                }
+
+                sendMessage(uploadPrompt)
+
             } catch (e: Exception) {
                 android.util.Log.e("SessionViewModel", "Upload failed", e)
+                
+                val latestQueue = com.pinghtdog.amping.data.repository.OfflineQueueManager.getQueue(context)
+                val lastEntry = latestQueue.lastOrNull()
+                if (lastEntry != null) {
+                    com.pinghtdog.amping.data.repository.OfflineQueueManager.updateEntryStatus(
+                        context, 
+                        lastEntry.id, 
+                        "Failed", 
+                        lastEntry.retryCount + 1
+                    )
+                    loadOfflineQueue()
+                }
+
                 _uiState.update {
                     it.copy(
                         isUploading = false,
-                        networkError = "Video upload failed: ${e.localizedMessage ?: "Unknown server error"}"
+                        currentPhase = SessionPhase.VDOT_QUEUE
                     )
+                }
+            }
+        }
+    }
+
+    private fun isNetworkAvailable(): Boolean {
+        return try {
+            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            val activeNetwork = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+            capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        } catch (e: SecurityException) {
+            android.util.Log.e("SessionViewModel", "SecurityException checking network state (ACCESS_NETWORK_STATE permission missing or not granted)", e)
+            false
+        } catch (e: Exception) {
+            android.util.Log.e("SessionViewModel", "Error checking network state", e)
+            false
+        }
+    }
+
+    fun loadOfflineQueue() {
+        val queue = com.pinghtdog.amping.data.repository.OfflineQueueManager.getQueue(context)
+        _uiState.update { it.copy(offlineQueue = queue) }
+    }
+
+    private fun startPeriodicBackgroundSync() {
+        viewModelScope.launch {
+            while (true) {
+                delay(15000)
+                if (isNetworkAvailable() && _uiState.value.isNetworkMode) {
+                    syncOfflineQueue()
+                }
+            }
+        }
+    }
+
+    fun syncOfflineQueue() {
+        val queue = com.pinghtdog.amping.data.repository.OfflineQueueManager.getQueue(context)
+        if (queue.isEmpty()) return
+        
+        viewModelScope.launch {
+            queue.forEach { entry ->
+                if (!isNetworkAvailable()) return@launch
+                
+                try {
+                    com.pinghtdog.amping.data.repository.OfflineQueueManager.updateEntryStatus(context, entry.id, "Uploading")
+                    loadOfflineQueue()
+                    
+                    val file = java.io.File(entry.localEncryptedPath)
+                    if (file.exists()) {
+                        val encryptedBytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            file.readBytes()
+                        }
+                        
+                        gabbyRepository.uploadVideo(encryptedBytes)
+                        
+                        com.pinghtdog.amping.data.repository.OfflineQueueManager.removeEntry(context, entry.id)
+                        loadOfflineQueue()
+                        
+                        if (_uiState.value.currentPhase == SessionPhase.VDOT_QUEUE) {
+                            _uiState.update {
+                                it.copy(
+                                    currentPhase = SessionPhase.CONVERSATION,
+                                    streakCount = it.streakCount + 1
+                                )
+                            }
+                            
+                            val motivation = try {
+                                val motFile = java.io.File(context.filesDir, "motivation.txt")
+                                if (motFile.exists()) motFile.readText().trim() else ""
+                            } catch (e: Exception) {
+                                ""
+                            }
+                            
+                            val uploadPrompt = if (motivation.isNotEmpty()) {
+                                "VDOT upload complete. Motivation: $motivation"
+                            } else {
+                                "VDOT upload complete."
+                            }
+                            sendMessage(uploadPrompt)
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("SessionViewModel", "Background sync failed for entry ${entry.id}", e)
+                    com.pinghtdog.amping.data.repository.OfflineQueueManager.updateEntryStatus(
+                        context, 
+                        entry.id, 
+                        "Failed", 
+                        entry.retryCount + 1
+                    )
+                    loadOfflineQueue()
                 }
             }
         }
@@ -670,6 +890,12 @@ class SessionViewModel @Inject constructor(
             }
             state.copy(
                 currentPhase = phase,
+                conversationStage = when (phase) {
+                    SessionPhase.CONVERSATION -> 1
+                    SessionPhase.SYMPTOM_LOGGING -> 2
+                    else -> 3
+                },
+                vdotRepromptCount = 0,
                 emergencyState = if (phase != SessionPhase.CONVERSATION) null else state.emergencyState
             )
         }
@@ -684,16 +910,30 @@ class SessionViewModel @Inject constructor(
         }
     }
 
+    fun bypassToolCallToVideoRecording() {
+        _uiState.update { it.copy(currentPhase = SessionPhase.VDOT_CAPTURE) }
+    }
+
     private fun updateQuickReplies() {
         val phase = _uiState.value.currentPhase
         val replies = when (phase) {
             SessionPhase.CONVERSATION -> {
-                if (_uiState.value.activeProfile == "youth") {
-                    listOf("Feelin' epic! 😎", "A bit tired today 🥱", "My stomach hurts 🤢")
-                } else if (_uiState.value.activeProfile == "senior") {
-                    listOf("I feel quite well, dear.", "Feeling a bit weak today.", "Struggling with nausea.")
+                if (_uiState.value.conversationStage == 3) {
+                    if (_uiState.value.activeProfile == "youth") {
+                        listOf("Ready", "Not yet", "Wait")
+                    } else if (_uiState.value.activeProfile == "senior") {
+                        listOf("Yes, ready", "Not yet", "Wait a bit")
+                    } else {
+                        listOf("Yes, ready", "Not yet", "Wait")
+                    }
                 } else {
-                    listOf("Feeling fully healthy.", "Experiencing minor fatigue.", "Experiencing mild nausea.")
+                    if (_uiState.value.activeProfile == "youth") {
+                        listOf("Epic! 😎", "Tired 🥱", "Sick 🤢")
+                    } else if (_uiState.value.activeProfile == "senior") {
+                        listOf("Feeling well", "Feeling weak", "Nauseous")
+                    } else {
+                        listOf("Healthy", "Tired", "Nauseous")
+                    }
                 }
             }
             else -> emptyList()

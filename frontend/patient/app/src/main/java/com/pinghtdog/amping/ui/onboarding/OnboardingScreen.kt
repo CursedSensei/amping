@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pinghtdog.amping.ui.components.GabbyIdle
 import com.pinghtdog.amping.ui.theme.CyanPrimary
@@ -32,6 +33,7 @@ fun OnboardingScreen(
     onOnboardingComplete: () -> Unit,
     viewModel: OnboardingViewModel = viewModel() // Injects the ViewModel automatically
 ) {
+    val context = LocalContext.current
     // Observe the state from the ViewModel
     val state by viewModel.uiState.collectAsState()
     val scrollState = rememberScrollState()
@@ -86,6 +88,20 @@ fun OnboardingScreen(
             isError = state.showValidationError && state.name.isBlank()
         )
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Motivation Input
+        OutlinedTextField(
+            value = state.motivation,
+            onValueChange = { viewModel.updateMotivation(it) },
+            label = { Text("What motivates you to finish your TB treatment?") },
+            placeholder = { Text("e.g. My children, staying healthy, returning to work") },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            maxLines = 3,
+            isError = state.showValidationError && state.motivation.isBlank()
+        )
+
         Spacer(modifier = Modifier.height(24.dp))
         Text(
             text = "Select your age group",
@@ -124,7 +140,7 @@ fun OnboardingScreen(
 
         if (state.showValidationError) {
             Text(
-                text = "Please enter a name and select an age group.",
+                text = "Please enter a name, motivation, and select an age group.",
                 color = RedPenalty,
                 fontSize = 14.sp,
                 modifier = Modifier.padding(top = 16.dp)
@@ -135,7 +151,7 @@ fun OnboardingScreen(
 
         // 4. Submit Button (Lets ViewModel decide if we can proceed)
         Button(
-            onClick = { viewModel.onContinueClicked(onSuccess = onOnboardingComplete) },
+            onClick = { viewModel.onContinueClicked(context = context, onSuccess = onOnboardingComplete) },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),

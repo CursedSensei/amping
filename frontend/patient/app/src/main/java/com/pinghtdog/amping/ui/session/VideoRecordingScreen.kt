@@ -69,8 +69,23 @@ fun VideoRecordingScreen(
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        hasCameraPermission = permissions[Manifest.permission.CAMERA] ?: hasCameraPermission
-        hasAudioPermission = permissions[Manifest.permission.RECORD_AUDIO] ?: hasAudioPermission
+        val cameraGranted = permissions[Manifest.permission.CAMERA] ?: hasCameraPermission
+        val audioGranted = permissions[Manifest.permission.RECORD_AUDIO] ?: hasAudioPermission
+        
+        hasCameraPermission = cameraGranted
+        hasAudioPermission = audioGranted
+        
+        if (!cameraGranted || !audioGranted) {
+            Toast.makeText(context, "Permissions denied. Redirecting to settings to enable camera/mic.", Toast.LENGTH_LONG).show()
+            try {
+                val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = android.net.Uri.fromParts("package", context.packageName, null)
+                }
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     if (!hasCameraPermission || !hasAudioPermission) {
