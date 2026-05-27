@@ -93,30 +93,6 @@ fun AmpingAppNavigation() {
             }
         }
 
-        // Show Skip Onboarding button if we are in the onboarding flow,
-        // but not on Splash (ob01) or Welcome Complete (ob15)
-        if (currentRoute != null && currentRoute.startsWith("ob") &&
-            currentRoute != "ob01_splash" && currentRoute != "ob15_welcome_complete") {
 
-            TextButton(
-                onClick = {
-                    navController.navigate("home") {
-                        popUpTo("onboarding") { inclusive = true }
-                    }
-                },
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 8.dp, end = 16.dp),
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = MaterialTheme.colorScheme.primary
-                )
-            ) {
-                Text(
-                    text = "Skip Onboarding",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
-                )
-            }
-        }
     }
 }
