@@ -29,5 +29,10 @@ data class SessionUiState(
     
     // Conversational stage tracking
     val conversationStage: Int = 1, // 1 = greeting, 2 = symptoms logging, 3 = VDOT ingestion confirmation
-    val vdotRepromptCount: Int = 0
+    val vdotRepromptCount: Int = 0,
+    
+    // Cryptographic Queueing and Sync states
+    val offlineQueue: List<com.pinghtdog.amping.data.model.QueueEntry> = emptyList(),
+    val syncStatusText: String = "",
+    val uploadProgressState: Float = 0f
 )

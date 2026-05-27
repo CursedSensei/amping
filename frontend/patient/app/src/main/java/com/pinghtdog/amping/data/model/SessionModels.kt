@@ -7,6 +7,8 @@ enum class SessionPhase {
     SYMPTOM_LOGGING,   // Phase 2: Logging side-effects / checklist
     VDOT_CAPTURE,      // Phase 3: Secure VDOT camera recording
     VDOT_REVIEW,       // Phase 3 Review: Reviewing and uploading the recorded clip
+    VDOT_SYNCING,      // Cryptographic encryption & transmission sync screen
+    VDOT_QUEUE,        // Offline Video Queue & Manual Retry Screen
     SUCCESS            // Complete! XP, Rewards, and Streaks
 }
 
