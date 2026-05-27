@@ -44,7 +44,6 @@ class SessionViewModel @Inject constructor(
 
     init {
         initializeTts()
-        initializeGreeting()
     }
 
     private fun initializeTts() {
@@ -55,6 +54,7 @@ class SessionViewModel @Inject constructor(
                     tts?.setLanguage(Locale.US)
                 }
                 setupUtteranceListener()
+                initializeGreeting()
             }
         }
     }
