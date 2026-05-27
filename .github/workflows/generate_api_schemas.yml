@@ -36,7 +36,7 @@ jobs:
         run: npm install -g quicktype
 
       - name: Generate and export API Schemas
-        run: uv export_schemas.py
+        run: uv run export_schemas.py
 
       - name: Commit and Push
         run: |
