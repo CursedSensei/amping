@@ -272,15 +272,7 @@ def simulate_day(req: SimulationRequest):
     save_state(state)
     return get_state()
 
-class UpdateModeRequest(BaseModel):
-    mode: str # "mock" or "modal"
 
-@app.post("/api/mode")
-def update_mode(req: UpdateModeRequest):
-    if req.mode not in ["mock", "modal"]:
-        raise HTTPException(status_code=400, detail="Invalid mode.")
-    settings.EXECUTION_MODE = req.mode
-    return {"status": "success", "mode": settings.EXECUTION_MODE}
 
 # # Empathetic LLM Chat Routing
 @app.post("/api/chat")
@@ -387,368 +379,186 @@ async def chat_endpoint(payload: ChatPayload):
             "<tool_call> {\"name\": \"trigger_vdot\", \"arguments\": {\"duration_seconds\": 15}} </tool_call>"
         )
 
-    # Switch execution mode
-    if settings.EXECUTION_MODE == "modal" and settings.MODAL_API_URL:
-        # Route to Modal vLLM deployment
-        try:
-            async with httpx.AsyncClient(timeout=120.0) as client: # 120s timeout to accommodate remote GPU cold starts
-                headers = {"Content-Type": "application/json"}
-                openai_payload = {
-                    "model": settings.SERVED_MODEL_NAME,
-                    "messages": [{"role": m.role, "content": m.content} for m in messages],
-                    "temperature": 0.7,
-                    "max_tokens": 512
-                }
+    # Route to Modal vLLM deployment
+    if not settings.MODAL_API_URL:
+        raise HTTPException(
+            status_code=503,
+            detail="Modal API URL is not configured. Please ensure MODAL_API_URL is set in settings."
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client: # 120s timeout to accommodate remote GPU cold starts
+            headers = {"Content-Type": "application/json"}
+            openai_payload = {
+                "model": settings.SERVED_MODEL_NAME,
+                "messages": [{"role": m.role, "content": m.content} for m in messages],
+                "temperature": 0.7,
+                "max_tokens": 512
+            }
+            
+            system_prompt = (
+                f"You are 'Gabby', an AI conversational health companion designed to motivate TB patients.\n"
+                f"Tailor your vocabulary, level of gamification, and empathy to the active profile: {profile}.\n"
+                f"Active Phase Instructions:\n{phase_instructions}\n"
+                f"CRITICAL STYLE RULES:\n"
+                f"- STRICTLY AVOID USING EMOJIS: Do not use any emojis, icons, emoticons, or decorative symbols under any circumstances. All your replies must contain plain text only.\n"
+                f"- USE MINIMAL LANGUAGE: Be extremely concise, direct, and brief. Use minimal sentences. Avoid extra explanations or chatty filler text.\n"
+                f"- PROFESSIONAL CHILD-LIKE MANNERISM: Maintain a professional, clinically supportive, and safe tone, but express it with innocent, simple, child-like mannerisms (using simple words, gentle vocabulary, straightforward instructions, and honest guidance)."
+            )
+            
+            openai_payload["messages"].insert(0, {"role": "system", "content": system_prompt})
+            
+            response = await client.post(
+                f"{settings.MODAL_API_URL}/v1/chat/completions",
+                json=openai_payload,
+                headers=headers
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                assistant_text = result["choices"][0]["message"]["content"]
                 
-                system_prompt = (
-                    f"You are 'Gabby', an AI conversational health companion designed to motivate TB patients.\n"
-                    f"Tailor your vocabulary, level of gamification, and empathy to the active profile: {profile}.\n"
-                    f"Active Phase Instructions:\n{phase_instructions}\n"
-                    f"CRITICAL STYLE RULES:\n"
-                    f"- STRICTLY AVOID USING EMOJIS: Do not use any emojis, icons, emoticons, or decorative symbols under any circumstances. All your replies must contain plain text only.\n"
-                    f"- USE MINIMAL LANGUAGE: Be extremely concise, direct, and brief. Use minimal sentences. Avoid extra explanations or chatty filler text.\n"
-                    f"- PROFESSIONAL CHILD-LIKE MANNERISM: Maintain a professional, clinically supportive, and safe tone, but express it with innocent, simple, child-like mannerisms (using simple words, gentle vocabulary, straightforward instructions, and honest guidance)."
-                )
+                # Clean thinking tags (e.g. <think>...</think>) from remote LLM responses if any leak out
+                assistant_text = re.sub(r"<think>[\s\S]*?<\/think>", "", assistant_text)
+                assistant_text = assistant_text.replace("</think>", "").replace("<think>", "").strip()
                 
-                openai_payload["messages"].insert(0, {"role": "system", "content": system_prompt})
-                
-                response = await client.post(
-                    f"{settings.MODAL_API_URL}/v1/chat/completions",
-                    json=openai_payload,
-                    headers=headers
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    assistant_text = result["choices"][0]["message"]["content"]
-                    
-                    # Clean thinking tags (e.g. <think>...</think>) from remote LLM responses if any leak out
-                    assistant_text = re.sub(r"<think>[\s\S]*?<\/think>", "", assistant_text)
-                    assistant_text = assistant_text.replace("</think>", "").replace("<think>", "").strip()
-                    
-                    # --- PROGRAMMATIC FAIL-SAFE FALLBACK INTERCEPT ---
-                    # If the remote LLM ignored our system instructions and failed to output a tool call,
-                    # we programmatically append the correct tool call based on current_phase & user input!
-                    if "<tool_call>" not in assistant_text:
-                        if current_phase == "empathy":
-                            # Only programmatically transition to symptoms if the user actually reported their mood
-                            # (i.e. their last message is not just a greeting or start message)
-                            is_greeting = any(w in last_user_words for w in ["hello", "hi", "hey", "gabby", "yo", "sup", "morning", "afternoon", "evening", "greetings"]) or last_user_message.strip() in ["", "?", "hi!", "hello!"]
-                            if not is_greeting:
-                                mood = "Neutral"
-                                if any(w in last_user_message for w in ["sad", "bad", "sick", "tired", "poor", "rough", "down", "fatigue", "nausea", "headache", "vomit"]):
-                                    mood = "Negative"
-                                elif any(w in last_user_message for w in ["good", "great", "happy", "fine", "awesome", "perfect", "well", "excellent"]):
-                                    mood = "Positive"
-                                
-                                # Append the tool call and a steering symptom prompt checklist
-                                transition_question = {
-                                    "youth": "\nLet us check your body today. Please fill out the symptom checklist below.",
-                                    "senior": "\nLet us review your body today, dear friend. Please check any symptoms you are feeling in the checklist card below.",
-                                    "adult": "\nLet us now document your physical symptoms. Please fill out the interactive symptom checklist below to log your status."
-                                }[profile]
-                                assistant_text += f"\n{transition_question}\n\n<tool_call> {{\"name\": \"show_symptom_checklist\", \"arguments\": {{\"mood\": \"{mood}\"}}}} </tool_call>"
-                        
-                        elif current_phase == "symptoms":
-                            is_submission = "submitted" in last_user_message or "reported" in last_user_message or "side effect" in last_user_message or any(w in last_user_message for w in ["nausea", "fatigue", "joint", "urine", "vomit", "none", "no"])
-                            if is_submission:
-                                severity = "Mild"
-                                if any(w in last_user_message for w in ["severe", "very", "intense", "heavy", "bad", "high"]):
-                                    severity = "Severe"
-                                elif any(w in last_user_message for w in ["no", "none", "fine", "okay", "good", "nothing", "zero"]):
-                                    severity = "None"
-                                
-                                side_effects = "nausea" if "nausea" in last_user_message or "sick" in last_user_message else "fatigue" if "tired" in last_user_message else "none"
-                                if severity == "None":
-                                    side_effects = "none"
-                                    
-                                # Append the transition tool call with VDOT confirmation check
-                                transition_vdot = {
-                                    "youth": "\nYour symptoms are logged. Please drink some water. Are you ready to start your secure VDOT check-in now?",
-                                    "senior": "\nThank you for telling me. Please rest well. Are you ready to start the camera for your VDOT dose ingestion, dear friend?",
-                                    "adult": "\nUnderstood. Telemetry logs updated. Please confirm when you are ready to begin the secure VDOT ingestion filming session."
-                                }[profile]
-                                assistant_text += f"\n{transition_vdot}\n\n<tool_call> {{\"name\": \"transition_to_vdot\", \"arguments\": {{\"side_effects\": \"{side_effects}\", \"nausea_severity\": \"{severity}\"}}}} </tool_call>"
-                            else:
-                                transition_question = {
-                                    "youth": "\nLet us check your body today. Please fill out the symptom checklist below.",
-                                    "senior": "\nLet us review your body today, dear friend. Please check any symptoms you are feeling in the card below.",
-                                    "adult": "\nLet us document your physical symptoms. Please fill out the interactive symptom checklist below to log your status."
-                                }[profile]
-                                assistant_text += f"\n{transition_question}\n\n<tool_call> {{\"name\": \"show_symptom_checklist\"}} </tool_call>"
-                        
-                        elif current_phase == "vdot":
-                            is_confirmed = any(w in last_user_message for w in ["yes", "start", "ready", "confirm", "ok", "sure", "now", "begin", "go", "video", "camera", "ingest", "button", "pill"]) and not any(w in last_user_message for w in ["not yet", "no", "wait", "hold", "stop", "cancel", "later"])
-                            duration = 20 if profile == "senior" else 15
-                            if is_confirmed:
-                                transition_text = {
-                                    "youth": "\nOpening the secure VDOT camera now. Please keep your face and the pill in the frame.",
-                                    "senior": "\nActivating the camera now, dear friend. Please take your time.",
-                                    "adult": "\nActivating the secure VDOT filming session now. Please position the camera so your swallow is clearly visible."
-                                }[profile]
-                                assistant_text += f"\n{transition_text}\n\n<tool_call> {{\"name\": \"trigger_vdot\", \"arguments\": {{\"duration_seconds\": {duration}}}}} </tool_call>"
-                            else:
-                                transition_text = {
-                                    "youth": "\nNo worries. Please tell me when you are ready to start the camera.",
-                                    "senior": "\nPlease take your time, dear friend. Tell me when you are ready to start.",
-                                    "adult": "\nUnderstood. Standing by for ingestion confirmation. Please click the button to start the VDOT camera when ready."
-                                }[profile]
-                                assistant_text += f"\n{transition_text}"
-                    
-                    # Intercept and process any tool call generated (remotely or programmatically!)
-                    tool_call_match = re.search(r"<tool_call>([\s\S]*?)<\/tool_call>", assistant_text)
-                    if tool_call_match:
-                        try:
-                            tool_data = json.loads(tool_call_match.group(1).strip())
-                            tool_name = tool_data.get("name")
-                            arguments = tool_data.get("arguments", {})
+                # --- PROGRAMMATIC FAIL-SAFE FALLBACK INTERCEPT ---
+                # If the remote LLM ignored our system instructions and failed to output a tool call,
+                # we programmatically append the correct tool call based on current_phase & user input!
+                if "<tool_call>" not in assistant_text:
+                    if current_phase == "empathy":
+                        # Only programmatically transition to symptoms if the user actually reported their mood
+                        # (i.e. their last message is not just a greeting or start message)
+                        is_greeting = any(w in last_user_words for w in ["hello", "hi", "hey", "gabby", "yo", "sup", "morning", "afternoon", "evening", "greetings"]) or last_user_message.strip() in ["", "?", "hi!", "hello!"]
+                        if not is_greeting:
+                            mood = "Neutral"
+                            if any(w in last_user_message for w in ["sad", "bad", "sick", "tired", "poor", "rough", "down", "fatigue", "nausea", "headache", "vomit"]):
+                                mood = "Negative"
+                            elif any(w in last_user_message for w in ["good", "great", "happy", "fine", "awesome", "perfect", "well", "excellent"]):
+                                mood = "Positive"
                             
-                            # Clean pure state transitions so they render beautifully or translate to checklist triggers
-                            if tool_name == "transition_to_symptoms":
-                                # Translate to show_symptom_checklist to trigger the checklist card!
-                                tool_data["name"] = "show_symptom_checklist"
-                                clean_text = assistant_text.replace(tool_call_match.group(0), "").strip()
-                                if not clean_text:
-                                    clean_text = {
-                                        "youth": "Let us check your body today. Please fill out the symptom checklist below.",
-                                        "senior": "Let us review your body today, dear friend. Please check any symptoms you are feeling in the checklist card below.",
-                                        "adult": "Let us now document your physical symptoms. Please fill out the interactive symptom checklist below to log your status."
-                                    }[profile]
-                                assistant_text = f"{clean_text}\n\n<tool_call> {json.dumps(tool_data)} </tool_call>"
+                            # Append the tool call and a steering symptom prompt checklist
+                            transition_question = {
+                                "youth": "\nLet us check your body today. Please fill out the symptom checklist below.",
+                                "senior": "\nLet us review your body today, dear friend. Please check any symptoms you are feeling in the checklist card below.",
+                                "adult": "\nLet us now document your physical symptoms. Please fill out the interactive symptom checklist below to log your status."
+                            }[profile]
+                            assistant_text += f"\n{transition_question}\n\n<tool_call> {{\"name\": \"show_symptom_checklist\", \"arguments\": {{\"mood\": \"{mood}\"}}}} </tool_call>"
+                    
+                    elif current_phase == "symptoms":
+                        is_submission = "submitted" in last_user_message or "reported" in last_user_message or "side effect" in last_user_message or any(w in last_user_message for w in ["nausea", "fatigue", "joint", "urine", "vomit", "none", "no"])
+                        if is_submission:
+                            severity = "Mild"
+                            if any(w in last_user_message for w in ["severe", "very", "intense", "heavy", "bad", "high"]):
+                                severity = "Severe"
+                            elif any(w in last_user_message for w in ["no", "none", "fine", "okay", "good", "nothing", "zero"]):
+                                severity = "None"
+                            
+                            side_effects = "nausea" if "nausea" in last_user_message or "sick" in last_user_message else "fatigue" if "tired" in last_user_message else "none"
+                            if severity == "None":
+                                side_effects = "none"
                                 
-                                state["current_phase"] = "symptoms"
+                            # Append the transition tool call with VDOT confirmation check
+                            transition_vdot = {
+                                "youth": "\nYour symptoms are logged. Please drink some water. Are you ready to start your secure VDOT check-in now?",
+                                "senior": "\nThank you for telling me. Please rest well. Are you ready to start the camera for your VDOT dose ingestion, dear friend?",
+                                "adult": "\nUnderstood. Telemetry logs updated. Please confirm when you are ready to begin the secure VDOT ingestion filming session."
+                            }[profile]
+                            assistant_text += f"\n{transition_vdot}\n\n<tool_call> {{\"name\": \"transition_to_vdot\", \"arguments\": {{\"side_effects\": \"{side_effects}\", \"nausea_severity\": \"{severity}\"}}}} </tool_call>"
+                        else:
+                            transition_question = {
+                                "youth": "\nLet us check your body today. Please fill out the symptom checklist below.",
+                                "senior": "\nLet us review your body today, dear friend. Please check any symptoms you are feeling in the card below.",
+                                "adult": "\nLet us document your physical symptoms. Please fill out the interactive symptom checklist below to log your status."
+                            }[profile]
+                            assistant_text += f"\n{transition_question}\n\n<tool_call> {{\"name\": \"show_symptom_checklist\"}} </tool_call>"
+                    
+                    elif current_phase == "vdot":
+                        is_confirmed = any(w in last_user_message for w in ["yes", "start", "ready", "confirm", "ok", "sure", "now", "begin", "go", "video", "camera", "ingest", "button", "pill"]) and not any(w in last_user_message for w in ["not yet", "no", "wait", "hold", "stop", "cancel", "later"])
+                        duration = 20 if profile == "senior" else 15
+                        if is_confirmed:
+                            transition_text = {
+                                "youth": "\nOpening the secure VDOT camera now. Please keep your face and the pill in the frame.",
+                                "senior": "\nActivating the camera now, dear friend. Please take your time.",
+                                "adult": "\nActivating the secure VDOT filming session now. Please position the camera so your swallow is clearly visible."
+                            }[profile]
+                            assistant_text += f"\n{transition_text}\n\n<tool_call> {{\"name\": \"trigger_vdot\", \"arguments\": {{\"duration_seconds\": {duration}}}}} </tool_call>"
+                        else:
+                            transition_text = {
+                                "youth": "\nNo worries. Please tell me when you are ready to start the camera.",
+                                "senior": "\nPlease take your time, dear friend. Tell me when you are ready to start.",
+                                "adult": "\nUnderstood. Standing by for ingestion confirmation. Please click the button to start the VDOT camera when ready."
+                            }[profile]
+                            assistant_text += f"\n{transition_text}"
+                
+                # Intercept and process any tool call generated (remotely or programmatically!)
+                tool_call_match = re.search(r"<tool_call>([\s\S]*?)<\/tool_call>", assistant_text)
+                if tool_call_match:
+                    try:
+                        tool_data = json.loads(tool_call_match.group(1).strip())
+                        tool_name = tool_data.get("name")
+                        arguments = tool_data.get("arguments", {})
+                        
+                        # Clean pure state transitions so they render beautifully or translate to checklist triggers
+                        if tool_name == "transition_to_symptoms":
+                            # Translate to show_symptom_checklist to trigger the checklist card!
+                            tool_data["name"] = "show_symptom_checklist"
+                            clean_text = assistant_text.replace(tool_call_match.group(0), "").strip()
+                            if not clean_text:
+                                clean_text = {
+                                    "youth": "Let us check your body today. Please fill out the symptom checklist below.",
+                                    "senior": "Let us review your body today, dear friend. Please check any symptoms you are feeling in the checklist card below.",
+                                    "adult": "Let us now document your physical symptoms. Please fill out the interactive symptom checklist below to log your status."
+                                }[profile]
+                            assistant_text = f"{clean_text}\n\n<tool_call> {json.dumps(tool_data)} </tool_call>"
+                            
+                            state["current_phase"] = "symptoms"
+                            state["clinical_notes"]["mood"] = arguments.get("mood", "Neutral")
+                            save_state(state)
+                            
+                        elif tool_name == "show_symptom_checklist" or tool_name == "show_doctor_contact":
+                            state["current_phase"] = "symptoms"
+                            if tool_name == "show_doctor_contact":
+                                state["clinical_notes"]["mood"] = "Negative"
+                            else:
                                 state["clinical_notes"]["mood"] = arguments.get("mood", "Neutral")
-                                save_state(state)
-                                
-                            elif tool_name == "show_symptom_checklist" or tool_name == "show_doctor_contact":
-                                state["current_phase"] = "symptoms"
-                                if tool_name == "show_doctor_contact":
-                                    state["clinical_notes"]["mood"] = "Negative"
-                                else:
-                                    state["clinical_notes"]["mood"] = arguments.get("mood", "Neutral")
-                                save_state(state)
-                                
-                            elif tool_name == "transition_to_vdot":
-                                clean_text = assistant_text.replace(tool_call_match.group(0), "").strip()
-                                if not clean_text:
-                                    clean_text = {
-                                        "youth": "Your symptoms are logged. Please drink some water. Are you ready to start your secure VDOT check-in now?",
-                                        "senior": "Thank you for telling me. Please rest well. Are you ready to start the camera for your VDOT dose ingestion, dear friend?",
-                                        "adult": "Understood. Telemetry logs updated. Please confirm when you are ready to begin the secure VDOT ingestion filming session."
-                                    }[profile]
-                                assistant_text = f"{clean_text}\n\n<tool_call> {json.dumps(tool_data)} </tool_call>"
-                                
-                                state["current_phase"] = "vdot"
-                                state["clinical_notes"]["side_effects"] = arguments.get("side_effects", "None")
-                                state["clinical_notes"]["nausea_severity"] = arguments.get("nausea_severity", "None")
-                                save_state(state)
-                        except Exception as e:
-                            print(f"Error parsing remote tool call: {e}")
+                            save_state(state)
                             
-                    return {
-                        "content": assistant_text,
-                        "status": "success",
-                        "current_phase": state.get("current_phase", "empathy"),
-                        "clinical_notes": state.get("clinical_notes", {})
-                    }
-                else:
-                    print(f"Modal request failed ({response.status_code}): {response.text}")
-        except Exception as e:
-            print(f"Modal backend connection exception: {str(e)}. Executing secure local mock fallback.")
-            
-    # Intelligent Offline Mock LLM (highly refined for empathetic TB guidance)
-    # Supports VDOT triggers when keywords matching dose ingestion are detected.
-    
-    if current_phase == "empathy":
-        # Check if they are greeting or if they've shared mood
-        is_greeting = any(h in last_user_words for h in ["hello", "hi", "hey", "gabby", "yo", "sup", "morning", "afternoon", "evening", "greetings"]) or last_user_message.strip() in ["", "?", "hi!", "hello!"]
-        
-        if is_greeting:
-            if profile == "youth":
-                assistant_text = "Hello! I am Gabby. Let us check in today. How are you feeling, my friend?"
-            elif profile == "senior":
-                assistant_text = "Hello there. I hope your body feels light and comfortable today. How are you feeling, dear friend?"
-            else: # adult
-                assistant_text = "Hello. I am Gabby, your virtual clinical companion. How are you feeling today? Let us check in on your wellbeing before we proceed."
-        else:
-            # Detect mood
-            if any(w in last_user_message for w in ["sad", "bad", "sick", "tired", "poor", "rough", "down", "fatigue", "nausea", "headache", "vomit"]):
-                mood = "Negative"
-                empathy_response = {
-                    "youth": (
-                        "I am sorry you are feeling down today. Please note: I am an AI adherence companion, not a therapist. "
-                        "I cannot provide psychological treatment. If you are feeling bad, please talk to your clinical care team. "
-                        "I have shown Dr. Sarah Jenkins' contact card below so you can reach out."
-                    ),
-                    "senior": (
-                        "I am sorry to hear you are feeling poorly today, dear friend. Please take things gently and rest. "
-                        "I am a digital assistant, not a therapist, and cannot provide psychological treatment. Please consult your care team. "
-                        "I have shown your coordinator's contact card below."
-                    ),
-                    "adult": (
-                        "I am sorry to hear you are experiencing distress today. Please note that I am a virtual AI adherence assistant "
-                        "and cannot provide psychological treatment. I advise consulting your physician or Care Coordinator. "
-                        "Dr. Sarah Jenkins' contact card is shown below."
-                    )
-                }[profile]
-                
-                # Steer immediately to next phase question
-                transition_question = {
-                    "youth": "Let us also check your symptoms. Are you having side effects like nausea or fatigue today?",
-                    "senior": "Let us quickly review how your body is doing. Are you having any side effects like nausea today, dear friend?",
-                    "adult": "Following your medical consultation, let us proceed to document your physical symptoms. Are you experiencing any side effects from your TB medication, such as nausea or fatigue?"
-                }[profile]
-                
-                assistant_text = (
-                    f"{empathy_response}\n\n{transition_question}\n\n"
-                    f'<tool_call> {{"name": "show_doctor_contact"}} </tool_call>'
-                )
+                        elif tool_name == "transition_to_vdot":
+                            clean_text = assistant_text.replace(tool_call_match.group(0), "").strip()
+                            if not clean_text:
+                                clean_text = {
+                                    "youth": "Your symptoms are logged. Please drink some water. Are you ready to start your secure VDOT check-in now?",
+                                    "senior": "Thank you for telling me. Please rest well. Are you ready to start the camera for your VDOT dose ingestion, dear friend?",
+                                    "adult": "Understood. Telemetry logs updated. Please confirm when you are ready to begin the secure VDOT ingestion filming session."
+                                }[profile]
+                            assistant_text = f"{clean_text}\n\n<tool_call> {json.dumps(tool_data)} </tool_call>"
+                            
+                            state["current_phase"] = "vdot"
+                            state["clinical_notes"]["side_effects"] = arguments.get("side_effects", "None")
+                            state["clinical_notes"]["nausea_severity"] = arguments.get("nausea_severity", "None")
+                            save_state(state)
+                    except Exception as e:
+                        print(f"Error parsing remote tool call: {e}")
+                        
+                return {
+                    "content": assistant_text,
+                    "status": "success",
+                    "current_phase": state.get("current_phase", "empathy"),
+                    "clinical_notes": state.get("clinical_notes", {})
+                }
             else:
-                if any(w in last_user_message for w in ["good", "great", "happy", "fine", "awesome", "perfect", "well", "excellent"]):
-                    mood = "Positive"
-                    empathy_response = {
-                        "youth": "That is very good to hear. Feeling strong is excellent. Let us keep going.",
-                        "senior": "That is wonderful news. Hearing you feel well makes me very happy, dear friend.",
-                        "adult": "Excellent. Maintaining positive physical and mental wellbeing is a very encouraging indicator for your therapeutic progress."
-                    }[profile]
-                else:
-                    mood = "Neutral"
-                    empathy_response = {
-                        "youth": "Understood. Keeping it steady is very good. Consistency is how we stay healthy.",
-                        "senior": "Thank you for sharing that. A quiet, steady day is a blessing, dear friend.",
-                        "adult": "Understood. A stable and consistent day-to-day state is a favorable foundation for ongoing TB therapy compliance."
-                    }[profile]
-                    
-                transition_question = {
-                    "youth": "Let us check your symptoms. Please use the interactive checklist below so we can review your body.",
-                    "senior": "Now, dear friend, let's review how your body is doing. Please fill out the daily checklist card below.",
-                    "adult": "Let us now document your physical symptoms for the outpatient registry. Please complete the interactive symptom checklist below."
-                }[profile]
-                
-                assistant_text = (
-                    f"{empathy_response}\n\n{transition_question}\n\n"
-                    f'<tool_call> {{"name": "show_symptom_checklist", "arguments": {{"mood": "{mood}"}}}} </tool_call>'
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Modal proxy returned status code {response.status_code}: {response.text}"
                 )
-            
-    elif current_phase == "symptoms":
-        is_submission = "submitted" in last_user_message or "reported" in last_user_message or "side effect" in last_user_message or any(w in last_user_message for w in ["nausea", "fatigue", "joint", "urine", "vomit", "none", "no"])
-        if is_submission:
-            # Detect symptoms and severity
-            if any(w in last_user_message for w in ["severe", "very", "intense", "heavy", "bad", "high"]):
-                severity = "Severe"
-            elif any(w in last_user_message for w in ["mild", "slight", "little", "bit", "moderate", "low"]):
-                severity = "Mild"
-            elif any(w in last_user_message for w in ["no", "none", "fine", "okay", "good", "nothing", "zero"]):
-                severity = "None"
-            else:
-                severity = "Mild"  # default if they report symptoms
-                
-            side_effects_desc = "nausea/fatigue"
-            if "nausea" in last_user_message or "sick" in last_user_message or "vomit" in last_user_message:
-                side_effects_desc = "nausea"
-            elif "tired" in last_user_message or "fatigue" in last_user_message or "sleepy" in last_user_message:
-                side_effects_desc = "fatigue"
-            elif "none" in last_user_message or "no side effect" in last_user_message or "okay" in last_user_message or "fine" in last_user_message:
-                side_effects_desc = "none"
-                severity = "None"
-                
-            if profile == "youth":
-                assistant_text = (
-                    f"Your symptoms are logged: {side_effects_desc} (Severity: {severity}). "
-                    f"Please drink some water. "
-                    f"Are you ready to start your secure VDOT check-in now?\n\n"
-                    f'<tool_call> {{"name": "transition_to_vdot", "arguments": {{"side_effects": "{side_effects_desc}", "nausea_severity": "{severity}"}}}} </tool_call>'
-                )
-            elif profile == "senior":
-                assistant_text = (
-                    f"Thank you for telling me, dear friend. I have recorded your side effects ({side_effects_desc}) with a severity of {severity}. Please rest well. "
-                    f"Are you ready to start the camera for your VDOT dose ingestion?\n\n"
-                    f'<tool_call> {{"name": "transition_to_vdot", "arguments": {{"side_effects": "{side_effects_desc}", "nausea_severity": "{severity}"}}}} </tool_call>'
-                )
-            else: # adult
-                assistant_text = (
-                    f"Understood. Telemetry logs updated: symptoms '{side_effects_desc}' recorded with severity rating '{severity}' in the outpatient registry. "
-                    f"Please confirm when you are ready to begin the secure VDOT ingestion filming session.\n\n"
-                    f'<tool_call> {{"name": "transition_to_vdot", "arguments": {{"side_effects": "{side_effects_desc}", "nausea_severity": "{severity}"}}}} </tool_call>'
-                )
-        else:
-            if profile == "youth":
-                assistant_text = (
-                    "Let us check your symptoms. Please use the interactive checklist below so we can keep track.\n\n"
-                    '<tool_call> {"name": "show_symptom_checklist"} </tool_call>'
-                )
-            elif profile == "senior":
-                assistant_text = (
-                    "Now, dear friend, let's review how your body is doing with the tablets. Please fill out the symptom checklist below.\n\n"
-                    '<tool_call> {"name": "show_symptom_checklist"} </tool_call>'
-                )
-            else: # adult
-                assistant_text = (
-                    "Let us proceed to document your physical symptoms. Please complete the interactive symptom checklist below.\n\n"
-                    '<tool_call> {"name": "show_symptom_checklist"} </tool_call>'
-                )
-            
-    else: # vdot phase
-        is_confirmed = any(w in last_user_message for w in ["yes", "start", "ready", "confirm", "ok", "sure", "now", "begin", "go", "video", "camera", "ingest", "button", "pill"]) and not any(w in last_user_message for w in ["not yet", "no", "wait", "hold", "stop", "cancel", "later"])
-        duration = 20 if profile == "senior" else 15
-        if is_confirmed:
-            if profile == "youth":
-                assistant_text = (
-                    f"I am opening your secure VDOT camera now. Keep your face and the pill in the frame and swallow.\n\n"
-                    f'<tool_call> {{"name": "trigger_vdot", "arguments": {{"duration_seconds": {duration}}}}} </tool_call>'
-                )
-            elif profile == "senior":
-                assistant_text = (
-                    f"Activating your camera now. Please take your pill with a gentle sip of water and show me when you have swallowed, dear friend. Take your time.\n\n"
-                    f'<tool_call> {{"name": "trigger_vdot", "arguments": {{"duration_seconds": {duration}}}}} </tool_call>'
-                )
-            else: # adult
-                assistant_text = (
-                    f"Wonderful. Activating the secure VDOT logging module now. Please position the camera so that your face and swallow are visible.\n\n"
-                    f'<tool_call> {{"name": "trigger_vdot", "arguments": {{"duration_seconds": {duration}}}}} </tool_call>'
-                )
-        else:
-            if profile == "youth":
-                assistant_text = (
-                    "No worries, take your time. Let me know when you are ready to start the camera."
-                )
-            elif profile == "senior":
-                assistant_text = (
-                    "That is perfectly fine. Take your time, dear friend. Let me know when you are ready to start the camera."
-                )
-            else: # adult
-                assistant_text = (
-                    "Understood. Standing by for ingestion confirmation. Please click the button to start the VDOT camera when ready."
-                )
-            
-    # Process tool call if generated by Mock LLM
-    tool_call_match = re.search(r"<tool_call>([\s\S]*?)<\/tool_call>", assistant_text)
-    if tool_call_match:
-        try:
-            tool_data = json.loads(tool_call_match.group(1).strip())
-            tool_name = tool_data.get("name")
-            arguments = tool_data.get("arguments", {})
-            if tool_name == "transition_to_symptoms" or tool_name == "show_doctor_contact" or tool_name == "show_symptom_checklist":
-                state["current_phase"] = "symptoms"
-                if tool_name == "show_doctor_contact":
-                    state["clinical_notes"]["mood"] = "Negative"
-                else:
-                    state["clinical_notes"]["mood"] = arguments.get("mood", "Neutral")
-                save_state(state)
-            elif tool_name == "transition_to_vdot":
-                state["current_phase"] = "vdot"
-                state["clinical_notes"]["side_effects"] = arguments.get("side_effects", "None")
-                state["clinical_notes"]["nausea_severity"] = arguments.get("nausea_severity", "None")
-                save_state(state)
-        except Exception as e:
-            print(f"Error parsing local tool call: {e}")
-            
-    return {
-        "content": assistant_text,
-        "status": "success",
-        "current_phase": state.get("current_phase", "empathy"),
-        "clinical_notes": state.get("clinical_notes", {})
-    }
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to communicate with Modal AI backend. Please verify your internet connection or cloud server status. Details: {str(e)}"
+        )
 
 # Mount static frontend files
 app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
