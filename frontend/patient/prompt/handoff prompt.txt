@@ -1,0 +1,38 @@
+Context:
+We are building "Project Amping," a gamified medical adherence app for TB patients. The app features an animated AI companion named "Gabby" and relies on gamification elements like streaks, XP, and badges. 
+
+Design System & Assets Available:
+ Theme Colors: `DarkNavy`, `LightBackground`, `CyanPrimary`, `RedPenalty`, `TextDark`, `TextMuted`, `GoldYellow`.
+ Custom Components: An `AnimatedGabby` composable exists and should be used whenever Gabby is speaking or guiding the user. 
+ Icons: Material Icons Extended is available. 
+
+Task:
+Generate Jetpack Compose screens and their corresponding ViewModels based strictly on the screen definitions provided in the CSV data below. 
+
+Strict Architectural Directives:
+1.  MVVM Pattern: Every screen must have a dedicated ViewModel. 
+2.  UI State: Use a `data class` to represent the UI state. The ViewModel should expose this via `StateFlow` (`MutableStateFlow` internally).
+3.  Stateless Views: The UI composables must be stateless. They should collect the `StateFlow` and pass user intents (clicks, typing) back up to the ViewModel via lambda functions. Do not put business logic in the composable.
+4.  Navigation: Do not implement `NavHost` here. Instead, pass navigation events as lambda parameters to the main screen composables (e.g., `onNavigateNext: () -> Unit`).
+5.  Obsolete Code: Completely ignore and discard any previous iterations of `OnboardingScreen.kt`. Treat the CSV data below as the absolute single source of truth for the new onboarding and app flow.
+
+Screen Definitions (Source of Truth):
+| Screen ID | Screen Name | Primary Purpose | Key UI Components | Core User Actions |
+| :--- | :--- | :--- | :--- | :--- |
+| OB-01 | Splash / Boot | App initialisation, brand moment, silent background token validation and asset pre-load. | Full-screen Amping logo centred. Animated Gabby silhouette rising from bottom. Thin skeleton loader (bottom 5% of screen). App version tag at footer. | None — fully passive. Auto-advances on asset load completion. |
+| OB-02 | Permission Requests Hub | Request camera, microphone, and notification permissions in a contextualised, non-alarming sequence. | One permission per step (never batched). Each step: icon + plain-language explanation + 'Allow' / 'Not Now' buttons. Reassurance copy: 'We will never record without you starting.' Animation shows how the feature is used. | Grant or defer each permission. |
+| OB-03 | Meet Gabby — Companion Introduction | Introduce the AI companion with age-group framing. Establish emotional connection before clinical use begins. | Full-screen animated Gabby (age-adaptive visual). Spoken TTS introduction. 3-tap interaction sequence ('Say hello back!'). Continue CTA appears after interaction. | Tap to respond to Gabby greeting. Tap Continue. |
+| OB-04 | Tutorial: What is a Streak? | Establish understanding of streak mechanic before first use. Reduce first-miss anxiety. | Animated 7-day streak calendar filling day by day. Streak counter growing. Gabby voiceover. 'What if I miss a day?' expandable FAQ card (reassures about grace window without naming the mechanic). Next button. | Watch animation. Optionally expand FAQ. Tap Next. |
+| OB-05 | Tutorial: How to Record a Dose Video | Demonstrate the A-VOT recording process step by step. Reduce camera anxiety. | 4-step illustrated walkthrough: Talk to Gabby → Camera activates → Show medicine → Show empty mouth. Play-through animation. 'Practice Mode' button (opens camera without submitting). 'I'm Ready' CTA. | Watch walkthrough. Optionally use Practice Mode. Tap I'm Ready. |
+| OB-06 | Tutorial: Your Health Guide (Provider Character) | Introduce the healthcare provider character. Establish the human-in-the-loop presence from Day 1. | Provider character card (avatar + assigned name). Intro message card: 'I'll be watching your progress. I'm proud of you for starting.' Message UI preview (shows what future in-game messages look like). Acknowledge button. | Read or listen to intro message. Tap Acknowledge. |
+| OB-07 | Notification Preferences Setup | Let patient choose daily dose reminder time and notification style. | Time picker (clock wheel). Notification style: Sound+Banner / Banner Only / Gabby Voice Reminder. Survey frequency: Weekly / Bi-weekly. Save button. | Set reminder time. Choose notification style. Save. |
+| OB-08 | Accessibility Confirmation | Show summary of all applied settings before entering the app. Allow last-minute adjustments. | Settings summary cards (Language, Text Size, Voice Mode, Reminder, Profile Type). 'Change' link beside each. 'Everything looks good' primary CTA. | Review settings. Adjust if needed. Confirm. |
+| OB-09 | Onboarding Complete / Welcome | Celebrate completion of onboarding. Transition to daily use with emotional warmth. | Gabby full-screen celebration animation. Spoken message: 'You are ready! Your health journey starts now.' 'Day 1 Streak Starts Today' badge displayed. Large 'Begin' button. | Tap Begin → navigates to Home Dashboard (DM-01). |
+
+Additional Accessibility & Design Notes for UI Implementation:
+ Incorporate TTS (Text-To-Speech) cues conceptually where applicable.
+ Low-literacy considerations: rely on icons, plain-language text, and large tap targets (minimum 48x48dp).
+ Animations and heavy assets should have fallbacks/skip options (e.g., seizure sensitivity on OB-01).
+ High-contrast design principles apply across all screens. 
+
+Please provide the Kotlin source code for the ViewModels and Jetpack Compose screens for these flows, adhering to all directives.

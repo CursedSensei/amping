@@ -26,7 +26,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.pinghtdog.amping.ui.DashBoard
 import com.pinghtdog.amping.ui.session.SessionFlowContainer
-import com.pinghtdog.amping.ui.onboarding.OnboardingScreen
+import com.pinghtdog.amping.ui.onboarding.OnboardingFlowContainer
 
 // Note: If you have a custom theme file, import it here (e.g., com.pinghtdog.amping.ui.theme.AmpingTheme)
 
@@ -64,7 +64,7 @@ fun AmpingAppNavigation() {
 
         // 0. Onboarding Flow
         composable("onboarding") {
-            OnboardingScreen(
+            OnboardingFlowContainer(
                 onOnboardingComplete = {
                     // Once they finish onboarding, send them to Home and prevent going back
                     navController.navigate("home") {
