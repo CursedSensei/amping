@@ -20,7 +20,7 @@ data class WebPatientDetailResponse (
 
     val email: String,
     val firstname: String,
-    val guardians: List<WebPatientGuardianEntry>,
+    val guardians: List<WebPatientGuardianDetailEntry>,
     val id: Long,
     val lastname: String,
 
@@ -41,7 +41,7 @@ data class WebPatientDetailResponse (
 )
 
 @Serializable
-data class WebPatientGuardianEntry (
+data class WebPatientGuardianDetailEntry (
     val contact: String,
     val email: String,
     val firstname: String,

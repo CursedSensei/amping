@@ -17,7 +17,6 @@ data class WebCreatePatientPayload (
     val email: String,
     val firstname: String,
     val guardians: List<WebPatientGuardianEntry>,
-    val id: Long,
     val lastname: String,
 
     @SerialName("regimen_start")
@@ -32,6 +31,5 @@ data class WebPatientGuardianEntry (
     val contact: String,
     val email: String,
     val firstname: String,
-    val id: Long,
     val lastname: String
 )
