@@ -11,15 +11,17 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.pinghtdog.amping.ui.HomeDashboardScreen
+import com.pinghtdog.amping.ui.DashBoard
 import com.pinghtdog.amping.ui.SessionLaunchScreen
 import com.pinghtdog.amping.ui.SuccessScreen
 import com.pinghtdog.amping.ui.SymptomReportScreen
 import com.pinghtdog.amping.ui.VideoRecordingScreen
 import com.pinghtdog.amping.ui.VideoReviewScreen
+import com.pinghtdog.amping.ui.onboarding.OnboardingScreen
+
 // Note: If you have a custom theme file, import it here (e.g., com.pinghtdog.amping.ui.theme.AmpingTheme)
 
-import com.pinghtdog.amping.ui.onboarding.onboardingNavGraph
+//import com.pinghtdog.amping.ui.onboarding.onboardingNavGraph
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,18 +49,20 @@ fun AmpingAppNavigation() {
     NavHost(navController = navController, startDestination = "onboarding") {
 
         // 0. Onboarding Flow
-        onboardingNavGraph(
-            navController = navController,
-            onOnboardingComplete = {
-                navController.navigate("home") {
-                    popUpTo("onboarding") { inclusive = true }
+        composable("onboarding") {
+            OnboardingScreen(
+                onOnboardingComplete = {
+                    // Once they finish onboarding, send them to Home and prevent going back
+                    navController.navigate("home") {
+                        popUpTo("onboarding") { inclusive = true }
+                    }
                 }
-            }
-        )
+            )
+        }
 
         // 1. Home Dashboard
         composable("home") {
-            HomeDashboardScreen(
+            DashBoard(
                 onStartSession = { navController.navigate("session_launch") }
             )
         }
