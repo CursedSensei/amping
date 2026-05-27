@@ -3,7 +3,8 @@ from datetime import date, timedelta
 from django.http import HttpRequest
 from django.db import transaction
 from django.shortcuts import get_object_or_404
-from ninja import Query
+from ninja import Query, File
+from ninja.files import UploadedFile
 
 from Amping.utils import create_routers
 from users.utils import getPatientUserByToken
@@ -119,4 +120,41 @@ def upload_symptoms(request: HttpRequest, payload: Mobile_UploadSymtomsPayload):
 
 @mobile_v1_router.get("/adherence_video_endpoint/", response=Mobile_GetAdherenceVideoEndpointResponse)
 def get_adherence_video_endpoint(request: HttpRequest):
-    return Mobile_GetAdherenceVideoEndpointResponse(video_upload_url="https://example.com/upload_endpoint")
+    # TODO: Review this
+    patient = getPatientUserByToken(request)
+    record, created = AdherenceDayRecord.objects.get_or_create(patient=patient, date=date.today())
+
+    return Mobile_GetAdherenceVideoEndpointResponse(
+        adherence_day_id=record.id,
+        video_endpoint=f"https://amping.onrender.com/api/v1/mobile/upload_video/{record.id}/"
+    )
+
+@mobile_v1_router.post("/upload_video/{record_id}/")
+def upload_video(request: HttpRequest, record_id: int, video: UploadedFile = File(...)):
+    patient = getPatientUserByToken(request)
+    record = get_object_or_404(AdherenceDayRecord, id=record_id, patient=patient)
+    
+    import os
+    from django.conf import settings
+    
+    media_dir = os.path.join(settings.BASE_DIR, 'media', 'recordings')
+    os.makedirs(media_dir, exist_ok=True)
+    
+    file_path = os.path.join(media_dir, f"video_{record_id}_{video.name}")
+    with open(file_path, 'wb') as f:
+        for chunk in video.chunks():
+            f.write(chunk)
+            
+    record.video_url = f"/media/recordings/video_{record_id}_{video.name}"
+    record.status = AdherenceStatusEnum.APP_RECORDED
+    record.save()
+    
+    # Update streaks
+    patient_stats = get_object_or_404(PatientStats, patient=patient)
+    patient_stats.current_streak += 1
+    if patient_stats.current_streak > patient_stats.best_streak:
+        patient_stats.best_streak = patient_stats.current_streak
+    patient_stats.save()
+    
+    return {"message": "Video uploaded successfully"}
+
