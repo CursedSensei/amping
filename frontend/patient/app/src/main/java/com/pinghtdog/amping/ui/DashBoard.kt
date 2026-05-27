@@ -48,10 +48,11 @@ import com.pinghtdog.amping.ui.theme.LightBackground
 import com.pinghtdog.amping.ui.theme.RedPenalty
 import com.pinghtdog.amping.ui.theme.TextDark
 import com.pinghtdog.amping.ui.theme.TextMuted
+import com.pinghtdog.amping.ui.components.GabbyIdle
 
 
 @Composable
-fun HomeDashboardScreen(onStartSession: () -> Unit) {
+fun DashBoard(onStartSession: () -> Unit) {
     Scaffold(
         bottomBar = { CustomBottomNavigation(onGabbyClick = onStartSession) },
         containerColor = LightBackground
