@@ -1,6 +1,8 @@
-import { AlertCircle, ChevronRight, Wifi, Zap } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { AlertCircle, ChevronRight, Wifi, Zap, Activity } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import gsap from 'gsap';
+
 import HeartQuota from '../components/HeartQuota';
 import RiskBadge from '../components/RiskBadge';
 import Sidebar from '../components/Sidebar';
@@ -17,21 +19,21 @@ const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 function ComplianceDot({ status }: { status: 'done' | 'missed' | 'pending' }) {
   if (status === 'done')
     return (
-      <div className="w-7 h-7 rounded-full bg-[#2e7d32] flex items-center justify-center shadow-[0px_2px_1px_-1px_rgba(0,0,0,0.2),0px_1px_1px_0px_rgba(0,0,0,0.14),0px_1px_3px_0px_rgba(0,0,0,0.12)]">
-        <svg viewBox="0 0 12 12" className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth={2.5}>
+      <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center shadow-sm shadow-emerald-500/20 transform hover:scale-110 transition-transform">
+        <svg viewBox="0 0 12 12" className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth={2.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M2 6l3 3 5-5" />
         </svg>
       </div>
     );
   if (status === 'missed')
     return (
-      <div className="w-7 h-7 rounded-full bg-[#ffebee] border border-[#d32f2f] flex items-center justify-center">
-        <svg viewBox="0 0 12 12" className="w-3.5 h-3.5 text-[#d32f2f]" fill="none" stroke="currentColor" strokeWidth={2.5}>
+      <div className="w-8 h-8 rounded-full bg-red-50 border-2 border-red-400 flex items-center justify-center transform hover:scale-110 transition-transform">
+        <svg viewBox="0 0 12 12" className="w-3.5 h-3.5 text-red-500" fill="none" stroke="currentColor" strokeWidth={2.5}>
           <path strokeLinecap="round" d="M3 3l6 6M9 3l-6 6" />
         </svg>
       </div>
     );
-  return <div className="w-7 h-7 rounded-full border-[1.5px] border-dashed border-gray-400 bg-gray-50" />;
+  return <div className="w-8 h-8 rounded-full border-2 border-dashed border-slate-300 bg-slate-50" />;
 }
 
 function PatientCard({ patient }: { patient: Patient }) {
@@ -39,38 +41,43 @@ function PatientCard({ patient }: { patient: Patient }) {
 
   return (
     <div
-      className="bg-white rounded-[4px] shadow-[0px_2px_1px_-1px_rgba(0,0,0,0.2),0px_1px_1px_0px_rgba(0,0,0,0.14),0px_1px_3px_0px_rgba(0,0,0,0.12)] p-6 cursor-pointer hover:shadow-[0px_3px_3px_-2px_rgba(0,0,0,0.2),0px_3px_4px_0px_rgba(0,0,0,0.14),0px_1px_8px_0px_rgba(0,0,0,0.12)] transition-shadow duration-300 group"
+      className="patient-card group bg-white rounded-2xl p-6 cursor-pointer border border-slate-100 shadow-[0_2px_10px_rgb(0,0,0,0.02)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:border-blue-100 transition-all duration-300 relative overflow-hidden"
       onClick={() => navigate(`/patient/${patient.id}`)}
     >
+      {/* Decorative hover gradient */}
+      <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-blue-400 to-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+
       {/* Header row */}
-      <div className="flex items-start justify-between mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-5">
         <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <h3 className="text-[1.25rem] font-medium leading-tight text-black/87 group-hover:text-[#1976d2] transition-colors">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="text-xl font-bold text-slate-800 group-hover:text-blue-600 transition-colors">
               {patient.name}
             </h3>
             {patient.riskTier !== 'safe' && (
-              <AlertCircle size={16} className="text-[#ed6c02]" />
+              <AlertCircle size={18} className="text-orange-500" />
             )}
           </div>
-          <p className="text-[0.875rem] text-black/60 font-normal">
+          <p className="text-sm text-slate-500 font-medium">
             {patient.age} Yrs · {patient.ageProfile} Profile
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 self-start">
           <RiskBadge tier={patient.riskTier} month3Protected={patient.month3Protected} />
-          <ChevronRight size={20} className="text-black/30 group-hover:text-[#1976d2] transition-colors" />
+          <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-blue-50 transition-colors">
+            <ChevronRight size={18} className="text-slate-400 group-hover:text-blue-600 transition-colors" />
+          </div>
         </div>
       </div>
 
       {/* Sync & symptom */}
-      <div className="flex items-center gap-4 mb-5">
-        <div className="flex items-center gap-1.5 text-[0.8125rem] text-black/60 font-medium">
-          <Wifi size={14} />
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="flex items-center gap-1.5 text-xs text-slate-500 font-bold tracking-wide uppercase bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
+          <Wifi size={14} className="text-blue-500" />
           Sync: {patient.lastSyncLabel}
         </div>
         {patient.symptomReported && patient.symptomReported.length > 0 && (
-          <div className="flex items-center gap-1.5 text-[0.8125rem] text-[#e65100] bg-[#fff3e0] px-3 py-1 rounded-[16px] font-medium">
+          <div className="flex items-center gap-1.5 text-xs text-orange-700 bg-orange-50 px-3 py-1.5 rounded-lg font-bold border border-orange-100">
             <AlertCircle size={14} />
             {patient.symptomReported.join(', ')}
           </div>
@@ -78,20 +85,20 @@ function PatientCard({ patient }: { patient: Patient }) {
       </div>
 
       {/* Metrics row */}
-      <div className="flex items-center gap-6 mb-5">
-        <div>
-          <p className="text-[0.75rem] uppercase tracking-[0.08333em] text-black/60 font-medium mb-1">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-6 sm:gap-10 mb-6">
+        <div className="bg-orange-50/50 rounded-xl p-3 border border-orange-100/50 flex-1 sm:flex-none">
+          <p className="text-[10px] uppercase tracking-widest text-orange-600/70 font-bold mb-1">
             Current Streak
           </p>
           <div className="flex items-center gap-1.5">
-            <Zap size={16} className="text-[#ed6c02] fill-[#ed6c02]" />
-            <span className="font-medium text-black/87 text-[1.25rem] leading-none">
+            <Zap size={18} className="text-orange-500 fill-orange-500" />
+            <span className="font-black text-slate-800 text-2xl leading-none">
               {patient.currentStreak}
             </span>
           </div>
         </div>
-        <div>
-          <p className="text-[0.75rem] uppercase tracking-[0.08333em] text-black/60 font-medium mb-1">
+        <div className="flex-1 sm:flex-none">
+          <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">
             Heart Quota
           </p>
           <HeartQuota filled={patient.heartQuota} />
@@ -99,14 +106,14 @@ function PatientCard({ patient }: { patient: Patient }) {
       </div>
 
       {/* 7-day compliance */}
-      <div>
-        <p className="text-[0.75rem] uppercase tracking-[0.08333em] text-black/60 font-medium mb-2">
+      <div className="pt-5 border-t border-slate-100">
+        <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-3">
           7-Day Compliance History
         </p>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2 sm:gap-4">
           {patient.weeklyCompliance.map((d, i) => (
-            <div key={i} className="flex flex-col items-center gap-1">
-              <span className="text-[0.6875rem] text-black/60 font-medium">{DAY_LABELS[i]}</span>
+            <div key={i} className="flex flex-col items-center gap-2">
+              <span className="text-[10px] text-slate-400 font-bold">{DAY_LABELS[i]}</span>
               <ComplianceDot status={d.status} />
             </div>
           ))}
@@ -120,30 +127,30 @@ function PatientCard({ patient }: { patient: Patient }) {
 
 function PatientCardSkeleton() {
   return (
-    <div className="bg-white rounded-[4px] shadow-[0px_2px_1px_-1px_rgba(0,0,0,0.2),0px_1px_1px_0px_rgba(0,0,0,0.14),0px_1px_3px_0px_rgba(0,0,0,0.12)] p-6 animate-pulse">
-      <div className="flex items-start justify-between mb-4">
-        <div className="space-y-2.5">
-          <div className="h-6 w-40 bg-black/10 rounded-[4px]" />
-          <div className="h-4 w-24 bg-black/10 rounded-[4px]" />
+    <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm animate-pulse">
+      <div className="flex items-start justify-between mb-5">
+        <div className="space-y-3">
+          <div className="h-6 w-48 bg-slate-200 rounded-md" />
+          <div className="h-4 w-24 bg-slate-100 rounded-md" />
         </div>
-        <div className="h-6 w-16 bg-black/10 rounded-[16px]" />
+        <div className="h-8 w-20 bg-slate-100 rounded-full" />
       </div>
-      <div className="h-4 w-32 bg-black/10 rounded-[4px] mb-5" />
-      <div className="flex gap-6 mb-5">
+      <div className="h-6 w-32 bg-slate-100 rounded-lg mb-6" />
+      <div className="flex gap-6 mb-6">
         <div className="space-y-2">
-           <div className="h-3 w-20 bg-black/10 rounded-[4px]" />
-           <div className="h-6 w-12 bg-black/10 rounded-[4px]" />
+           <div className="h-3 w-20 bg-slate-100 rounded-md" />
+           <div className="h-8 w-12 bg-slate-200 rounded-md" />
         </div>
         <div className="space-y-2">
-           <div className="h-3 w-20 bg-black/10 rounded-[4px]" />
-           <div className="h-6 w-24 bg-black/10 rounded-[4px]" />
+           <div className="h-3 w-20 bg-slate-100 rounded-md" />
+           <div className="h-8 w-32 bg-slate-100 rounded-md" />
         </div>
       </div>
-      <div>
-         <div className="h-3 w-32 bg-black/10 rounded-[4px] mb-3" />
-         <div className="flex gap-1.5">
+      <div className="pt-5 border-t border-slate-50">
+         <div className="h-3 w-40 bg-slate-100 rounded-md mb-4" />
+         <div className="flex gap-3">
            {Array.from({ length: 7 }).map((_, i) => (
-             <div key={i} className="w-7 h-7 rounded-full bg-black/10" />
+             <div key={i} className="w-8 h-8 rounded-full bg-slate-100" />
            ))}
          </div>
       </div>
@@ -159,6 +166,8 @@ export default function PatientRoster() {
   const [fetchError, setFetchError] = useState('');
   const [filter, setFilter] = useState<RiskFilter>('all');
   const [search, setSearch] = useState('');
+  
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -192,49 +201,80 @@ export default function PatientRoster() {
     return matchSearch && matchFilter;
   });
 
+  // GSAP Animation for Cards
+  useEffect(() => {
+    if (!loading && filtered.length > 0) {
+      const ctx = gsap.context(() => {
+        gsap.fromTo(
+          '.patient-card',
+          { y: 30, opacity: 0 },
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.5,
+            stagger: 0.08,
+            ease: 'power3.out',
+          }
+        );
+      }, containerRef);
+      return () => ctx.revert();
+    }
+  }, [loading, filtered]); // Re-runs animation when search/filter updates the list
+
   return (
-    <div className="flex h-screen bg-[#f5f5f5] overflow-hidden">
+    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
       <Sidebar
         onSearch={setSearch}
         onFilter={setFilter}
         activeFilter={filter}
       />
 
-      <main className="flex-1 p-8 overflow-y-auto h-full">
-        {/* Page header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-[1.5rem] font-normal tracking-tight text-black/87">
-              Patient Roster
-            </h1>
-            <p className="text-[0.875rem] text-black/60 mt-1">
-              {loading
-                ? 'Loading…'
-                : `${filtered.length} patient${filtered.length !== 1 ? 's' : ''} shown`}
-            </p>
-          </div>
-        </div>
-
-        {/* Error banner */}
-        {fetchError && (
-          <div className="flex items-center gap-3 bg-[#ffebee] text-[#d32f2f] text-[0.875rem] rounded-[4px] px-4 py-3 mb-6 shadow-[0px_2px_1px_-1px_rgba(0,0,0,0.2),0px_1px_1px_0px_rgba(0,0,0,0.14),0px_1px_3px_0px_rgba(0,0,0,0.12)]">
-            <AlertCircle size={20} className="shrink-0" />
-            <span className="font-medium">{fetchError}</span>
-          </div>
-        )}
-
-        {/* Cards */}
-        <div className="flex flex-col gap-4">
-          {loading ? (
-            Array.from({ length: 3 }).map((_, i) => <PatientCardSkeleton key={i} />)
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-16 text-black/60">
-              <p className="text-[1.25rem] font-medium">No patients found</p>
-              <p className="text-[0.875rem] mt-1">Try adjusting your search or filter.</p>
+      <main className="flex-1 p-6 md:p-10 overflow-y-auto h-full scroll-smooth">
+        <div className="max-w-5xl mx-auto">
+          
+          {/* Page header */}
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-100/50 text-blue-700 text-xs font-bold rounded-full mb-3">
+                <Activity size={14} />
+                Live Monitoring
+              </div>
+              <h1 className="text-3xl font-black tracking-tight text-slate-900">
+                Patient Roster
+              </h1>
+              <p className="text-sm text-slate-500 mt-2 font-medium">
+                {loading
+                  ? 'Syncing active profiles…'
+                  : `Tracking ${filtered.length} active patient${filtered.length !== 1 ? 's' : ''}`}
+              </p>
             </div>
-          ) : (
-            filtered.map((p) => <PatientCard key={p.id} patient={p} />)
+          </div>
+
+          {/* Error banner */}
+          {fetchError && (
+            <div className="flex items-center gap-3 bg-red-50 text-red-600 border border-red-100 text-sm rounded-xl px-5 py-4 mb-8 shadow-sm">
+              <AlertCircle size={20} className="shrink-0" />
+              <span className="font-bold">{fetchError}</span>
+            </div>
           )}
+
+          {/* Cards Container */}
+          <div ref={containerRef} className="flex flex-col gap-5">
+            {loading ? (
+              Array.from({ length: 3 }).map((_, i) => <PatientCardSkeleton key={i} />)
+            ) : filtered.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-slate-400 bg-white rounded-3xl border border-slate-100 border-dashed">
+                <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mb-4">
+                  <AlertCircle size={32} className="text-slate-300" />
+                </div>
+                <p className="text-xl font-bold text-slate-600">No patients found</p>
+                <p className="text-sm mt-2 font-medium">Try adjusting your search or filter parameters.</p>
+              </div>
+            ) : (
+              filtered.map((p) => <PatientCard key={p.id} patient={p} />)
+            )}
+          </div>
+
         </div>
       </main>
     </div>
