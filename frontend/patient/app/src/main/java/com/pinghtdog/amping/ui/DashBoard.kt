@@ -14,8 +14,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.SportsSoccer
 import androidx.compose.material.icons.outlined.Home
@@ -45,18 +47,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.pinghtdog.amping.ui.components.AnimatedGabby
+import com.pinghtdog.amping.ui.components.GabbyIdle
+import com.pinghtdog.amping.ui.components.GabbyState
+import com.pinghtdog.amping.ui.components.PetBackground
 import com.pinghtdog.amping.ui.theme.CyanPrimary
 import com.pinghtdog.amping.ui.theme.DarkNavy
 import com.pinghtdog.amping.ui.theme.LightBackground
 import com.pinghtdog.amping.ui.theme.RedPenalty
 import com.pinghtdog.amping.ui.theme.TextDark
 import com.pinghtdog.amping.ui.theme.TextMuted
-import com.pinghtdog.amping.ui.components.GabbyIdle
-import com.pinghtdog.amping.ui.components.AnimatedGabby
-import com.pinghtdog.amping.ui.components.GabbyState
-import com.pinghtdog.amping.ui.components.PetBackground
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 
 @Composable
 fun DashBoard(
@@ -179,33 +179,33 @@ fun DashBoard(
             }
 
             // --- GABBY ROOM AREA ---
-//            Box(
-//                modifier = Modifier.fillMaxWidth(),
-//                contentAlignment = Alignment.Center
-//            ) {
-//                // Background layer
-//                PetBackground(modifier = Modifier.matchParentSize())
-//
-//                Column(
-//                    horizontalAlignment = Alignment.CenterHorizontally,
-//                    modifier = Modifier.fillMaxWidth()
-//                ) {
-                    Spacer(modifier = Modifier.height(150.dp))
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                // Background layer
+                PetBackground(modifier = Modifier.matchParentSize())
+                
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Spacer(modifier = Modifier.height(64.dp))
 
                     // Central Gabby - Like Pou
                     AnimatedGabby(
                         state = gabbyState,
                         modifier = Modifier
                             .size(320.dp)
-                            .clickable {
+                            .clickable { 
                                 gabbyState = if (gabbyState == GabbyState.IDLE) GabbyState.SPEAKING else GabbyState.IDLE
                             }
                     )
 
-                    Spacer(modifier = Modifier.height(30.dp))
-//                }
-//            }
-//            // --- END GABBY ROOM AREA ---
+                    Spacer(modifier = Modifier.height(300.dp))
+                }
+            }
+            // --- END GABBY ROOM AREA ---
 
             // Section Header for Stats
             Text(
