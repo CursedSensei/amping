@@ -1,8 +1,8 @@
-import { AlertTriangle, LogOut, Search, ShieldCheck, Users, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, LogOut, Search, ShieldCheck, Users } from 'lucide-react';
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { MOCK_PATIENTS } from '../data/mockData';
+import { usePatients } from '../context/PatientContext';
 
 type RiskFilter = 'all' | 'high' | 'low';
 
@@ -18,6 +18,7 @@ export default function Sidebar({ onSearch, onFilter, activeFilter = 'all' }: Si
   const location = useLocation();
 
   const { logout } = useAuth();
+  const { patients } = usePatients();
 
   const handleSearch = (val: string) => {
     setQuery(val);
@@ -27,7 +28,7 @@ export default function Sidebar({ onSearch, onFilter, activeFilter = 'all' }: Si
   const isRoster = location.pathname === '/';
   const isRisk = location.pathname === '/risk';
 
-  const highRiskCount = MOCK_PATIENTS.filter(
+  const highRiskCount = patients.filter(
     (p) => p.riskTier === 'tier2' || p.riskTier === 'tier3'
   ).length;
 
@@ -36,7 +37,10 @@ export default function Sidebar({ onSearch, onFilter, activeFilter = 'all' }: Si
       
       {/* Ambient Background Glows (Matching Login Page) */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-blue-600/10 to-purple-600/10" />
+        <div
+          className="absolute top-0 left-0 w-full h-full"
+          style={{ backgroundImage: 'linear-gradient(to bottom right, rgba(37, 99, 235, 0.10), rgba(147, 51, 234, 0.10))' }}
+        />
         <div className="absolute -top-24 -left-24 w-64 h-64 rounded-full bg-blue-500/10 blur-[80px]" />
       </div>
 
@@ -73,7 +77,7 @@ export default function Sidebar({ onSearch, onFilter, activeFilter = 'all' }: Si
             <Users size={18} className={isRoster ? 'text-white' : 'text-slate-500'} />
             Patient Roster
             <span className={`ml-auto text-[11px] px-2 py-0.5 rounded-full ${isRoster ? 'bg-white/20' : 'bg-white/10'}`}>
-              {MOCK_PATIENTS.length}
+              {patients.length}
             </span>
           </button>
 
@@ -159,7 +163,10 @@ export default function Sidebar({ onSearch, onFilter, activeFilter = 'all' }: Si
         {/* Footer */}
         <div className="p-4 border-t border-white/10 mt-auto bg-black/10">
           <div className="flex items-center gap-3 text-slate-400">
-            <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-xs font-bold text-white shadow-md">
+            <div
+              className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-md"
+              style={{ backgroundImage: 'linear-gradient(to top right, rgb(37, 99, 235), rgb(99, 102, 241))' }}
+            >
               AT
             </div>
             <div className="flex-1 min-w-0">

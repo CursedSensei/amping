@@ -24,13 +24,10 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
-import type { WebAdherenceMonthResponse } from '../api_types/Web_AdherenceMonthResponse';
-import type { WebGamificationResponse } from '../api_types/Web_GamificationResponse';
-import type { WebPatientDetailResponse } from '../api_types/Web_PatientDetailResponse';
 import HeartQuota from '../components/HeartQuota';
+import { usePatients } from '../context/PatientContext';
 import { type DayStatus, type PDCPoint, type PenaltyEvent } from '../data/mockData';
 import { buildHeatmapFromApi, toPenaltyEvent } from '../services/adapters';
-import { getPatient, getPatientAdherenceMonth, getPatientStats } from '../services/patient';
 
 // ─── Local grid cell type ─────────────────────────────────────────────────
 //  'empty'  = day exists in calendar but is before the patient's regimen start
@@ -317,46 +314,33 @@ export default function UnifiedAdherenceRecord() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const printRef = useRef<HTMLDivElement>(null);
-
-  // ── API state ─────────────────────────────────────────────────────────────
-  const [patientDetail, setPatientDetail] = useState<WebPatientDetailResponse | null>(null);
-  const [adherence, setAdherence] = useState<WebAdherenceMonthResponse | null>(null);
-  const [gamification, setGamification] = useState<WebGamificationResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [adherenceLoading, setAdherenceLoading] = useState(false);
-  const [fetchError, setFetchError] = useState('');
+  const { patientBundles, ensurePatientBundle, loadPatientAdherence } = usePatients();
 
   const [selectedCell, setSelectedCell] = useState<GridCell | null>(null);
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
 
   const numericId = id ? Number(id) : NaN;
+  const month = currentDate.getMonth() + 1;
+  const selectedYear = currentDate.getFullYear();
+  const adherenceKey = `${selectedYear}-${String(month).padStart(2, '0')}` as `${number}-${number}`;
+  const bundle = Number.isNaN(numericId) ? null : patientBundles[numericId] ?? null;
+  const patientDetail = bundle?.detail ?? null;
+  const gamification = bundle?.gamification ?? null;
+  const adherence = bundle?.adherenceByMonth[adherenceKey] ?? null;
+  const loading = Number.isNaN(numericId) ? false : (!bundle || bundle.detailLoading || bundle.gamificationLoading);
+  const adherenceLoading = Number.isNaN(numericId) ? false : !!bundle?.adherenceLoading[adherenceKey];
+  const fetchError = bundle?.error ?? '';
 
-  // Fetch patient detail + gamification once on mount
   useEffect(() => {
-    if (isNaN(numericId)) return;
-    setLoading(true);
-    Promise.all([getPatient({ patient_id: numericId }), getPatientStats({ patient_id: numericId })])
-      .then(([p, g]) => {
-        setPatientDetail(p);
-        setGamification(g);
-      })
-      .catch(() => setFetchError('Failed to load patient data.'))
-      .finally(() => setLoading(false));
-  }, [numericId]);
+    if (Number.isNaN(numericId)) return;
+    void ensurePatientBundle(numericId);
+  }, [numericId, ensurePatientBundle]);
 
-  // Re-fetch adherence whenever month changes
   useEffect(() => {
-    if (isNaN(numericId)) return;
-    const month = currentDate.getMonth() + 1; // 1-indexed
-    const year  = currentDate.getFullYear();
-    setAdherenceLoading(true);
+    if (Number.isNaN(numericId)) return;
     setSelectedCell(null);
-    // TODO: the backend patient adherence endpoint currently derives month/year server-side.
-    getPatientAdherenceMonth({ patient_id: numericId, payload: { month, year } })
-      .then(setAdherence)
-      .catch(() => setAdherence(null))
-      .finally(() => setAdherenceLoading(false));
-  }, [numericId, currentDate]);
+    void loadPatientAdherence(numericId, month, selectedYear);
+  }, [numericId, currentDate, loadPatientAdherence, month, selectedYear]);
 
   const handlePrevMonth = () =>
     setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
@@ -418,9 +402,9 @@ export default function UnifiedAdherenceRecord() {
   const pdcTrend: PDCPoint[] = [];
 
   // ── Calendar grid ─────────────────────────────────────────────────────────
-  const year        = currentDate.getFullYear();
+  const calendarYear = currentDate.getFullYear();
   const month0      = currentDate.getMonth(); // 0-indexed
-  const daysInMonth = new Date(year, month0 + 1, 0).getDate();
+  const daysInMonth = new Date(calendarYear, month0 + 1, 0).getDate();
 
   const displayMonthStr = currentDate
     .toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
@@ -431,7 +415,7 @@ export default function UnifiedAdherenceRecord() {
   if (adherence) {
     const { heatmapDays } = buildHeatmapFromApi(
       adherence.adherence_days,
-      year,
+      calendarYear,
       month0 + 1,
     );
     for (const hd of heatmapDays) {
@@ -445,14 +429,14 @@ export default function UnifiedAdherenceRecord() {
   today.setHours(0, 0, 0, 0);
 
   const classify = (day: number): { status: CellStatus; note?: string } => {
-    const cellDate = new Date(year, month0, day);
+    const cellDate = new Date(calendarYear, month0, day);
     if (cellDate < regimenStartDate) return { status: 'empty' };
     if (cellDate > today)            return { status: 'future' };
     if (overrideMap.has(day))        return overrideMap.get(day)!;
     return { status: 'app-recorded' };
   };
 
-  const gridCells = buildGridCells(year, month0, daysInMonth, classify);
+  const gridCells = buildGridCells(calendarYear, month0, daysInMonth, classify);
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (

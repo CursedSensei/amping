@@ -1,11 +1,10 @@
 import { AlertCircle, ArrowLeft, CheckCircle2, ChevronRight, Loader2, ShieldCheck, X, Zap } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import type { WebPatientDetailResponse } from '../api_types/Web_PatientDetailResponse';
 import { ReconciliationMethodEnum } from '../api_types/Web_ReconcileAnomalyPayload';
+import { usePatients } from '../context/PatientContext';
 import { type AnomalousEntry } from '../data/mockData';
 import { toAnomalousEntry } from '../services/adapters';
-import { getAnomalousEntries, getPatient, reconcileAnomalies } from '../services/patient';
 
 // ─── Status config ──────────────────────────────────────────────────────────
 
@@ -168,15 +167,11 @@ export default function DoseReconciliation() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const numericId = Number(id);
+  const { patientBundles, ensurePatientBundle, reconcilePatientAnomalies } = usePatients();
+  const bundle = Number.isNaN(numericId) ? null : patientBundles[numericId] ?? null;
 
-  // ── API state ────────────────────────────────────────────────────────────
-  const [patientDetail, setPatientDetail] = useState<WebPatientDetailResponse | null>(null);
-  const [entries, setEntries] = useState<AnomalousEntry[]>([]);
-  // Map<localStringId, rawNumericId> — needed to build entry_ids payload
-  const [rawIds, setRawIds] = useState<Map<string, number>>(new Map());
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [fetchError, setFetchError] = useState('');
+  const fetchError = bundle?.error ?? '';
 
   // ── UI state ─────────────────────────────────────────────────────────────
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -186,40 +181,27 @@ export default function DoseReconciliation() {
   const [liveStreak, setLiveStreak] = useState(0);
   const [baseStreak, setBaseStreak] = useState(0);
 
-  // ── Fetch on mount ───────────────────────────────────────────────────────
+  const patientDetail = bundle?.detail ?? null;
+  const loading = Number.isNaN(numericId) ? false : (!bundle || bundle.detailLoading || bundle.anomaliesLoading);
+
+  const [entries, rawIds] = useMemo(() => {
+    const response = bundle?.anomalies;
+    if (!response) return [[], new Map<string, number>()] as const;
+
+    const idMap = new Map<string, number>();
+    const adapted = response.entries.map((entry) => {
+      const local = toAnomalousEntry(entry);
+      idMap.set(local.id, entry.id);
+      return local;
+    });
+
+    return [adapted, idMap] as const;
+  }, [bundle?.anomalies]);
+
   useEffect(() => {
-    if (!numericId) return;
-    let cancelled = false;
-    setLoading(true);
-    setFetchError('');
-
-    Promise.all([
-      getPatient({ patient_id: numericId }),
-      getAnomalousEntries({ patient_id: numericId }),
-    ])
-      .then(([detail, anomalousRes]) => {
-        if (cancelled) return;
-        setPatientDetail(detail);
-
-        // Build local entries + rawIds map
-        const idMap = new Map<string, number>();
-        const adapted = anomalousRes.entries.map((e) => {
-          const local = toAnomalousEntry(e);
-          idMap.set(local.id, e.id);
-          return local;
-        });
-        setEntries(adapted);
-        setRawIds(idMap);
-      })
-      .catch(() => {
-        if (!cancelled) setFetchError('Failed to load patient data. Please go back and try again.');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [numericId]);
+    if (Number.isNaN(numericId)) return;
+    void ensurePatientBundle(numericId);
+  }, [numericId, ensurePatientBundle]);
 
   // Sync liveStreak once patient loads (gamification not fetched here — use
   // current_day as a proxy; real streak comes from reconcile response)
@@ -250,13 +232,10 @@ export default function DoseReconciliation() {
 
     setSubmitting(true);
     try {
-      const result = await reconcileAnomalies({
-        patient_id: numericId,
-        payload: {
-          entry_ids: entryIds,
-          verification_method: method,
-          reason,
-        },
+      const result = await reconcilePatientAnomalies(numericId, {
+        entry_ids: entryIds,
+        verification_method: method,
+        reason,
       });
 
       setReconciled((prev) => new Set([...prev, ...selected]));

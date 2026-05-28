@@ -1,23 +1,24 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import {
-  ArrowLeft,
-  ShieldCheck,
-  Users,
-  AlertTriangle,
-  AlertOctagon,
-  Printer,
-  UserCheck,
-  MessageSquare,
-  X,
-  Download,
-  CheckCircle2,
-  ImageIcon,
-} from 'lucide-react';
-import { useReactToPrint } from 'react-to-print';
 import gsap from 'gsap';
+import {
+    AlertOctagon,
+    AlertTriangle,
+    ArrowLeft,
+    CheckCircle2,
+    Download,
+    ImageIcon,
+    MessageSquare,
+    Printer,
+    ShieldCheck,
+    UserCheck,
+    Users,
+    X,
+} from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useReactToPrint } from 'react-to-print';
 import Sidebar from '../components/Sidebar';
-import { MOCK_PATIENTS, type Patient, type RiskTier } from '../data/mockData';
+import { usePatients } from '../context/PatientContext';
+import { type Patient, type RiskTier } from '../data/mockData';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -32,7 +33,7 @@ function Toast({ message, onDismiss }: { message: string; onDismiss: () => void 
   }, [onDismiss]);
 
   return (
-    <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[300] flex items-center gap-3 bg-[#0A0F24] text-white text-sm font-bold px-6 py-4 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.2)] border border-white/10 max-w-md w-[90%] transform transition-all animate-in slide-in-from-top-4 fade-in">
+    <div className="fixed top-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-[#0A0F24] text-white text-sm font-bold px-6 py-4 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.2)] border border-white/10 max-w-md w-[90%] transform transition-all animate-in slide-in-from-top-4 fade-in" style={{ zIndex: 300 }}>
       <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
         <MessageSquare size={16} className="text-blue-400" />
       </div>
@@ -55,9 +56,9 @@ function BHWModal({ patient, onClose }: { patient: Patient; onClose: () => void 
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4" style={{ zIndex: 100 }}>
       <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-100 transform transition-all">
-        <div className="flex items-center gap-4 p-6 bg-gradient-to-br from-orange-50 to-orange-100/50 border-b border-orange-100">
+        <div className="flex items-center gap-4 p-6 border-b border-orange-100" style={{ backgroundImage: 'linear-gradient(to bottom right, rgb(255, 247, 237), rgba(254, 215, 170, 0.50))' }}>
           <div className="w-12 h-12 rounded-2xl bg-white shadow-sm border border-orange-200 flex items-center justify-center shrink-0">
             <UserCheck size={24} className="text-orange-500" />
           </div>
@@ -148,7 +149,7 @@ function DOTModal({ patient, onClose }: { patient: Patient; onClose: () => void 
   const today = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 lg:p-10">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 lg:p-10" style={{ zIndex: 100 }}>
       <div className="bg-white rounded-3xl w-full max-w-5xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[95vh]">
         
         {/* Modal header */}
@@ -267,7 +268,7 @@ function DOTModal({ patient, onClose }: { patient: Patient; onClose: () => void 
                 ].map((f) => (
                   <div key={f.label}>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{f.label}</p>
-                    <p className="font-bold text-base text-slate-900 break-words">{f.value}</p>
+                    <p className="font-bold text-base text-slate-900" style={{ overflowWrap: 'anywhere' }}>{f.value}</p>
                   </div>
                 ))}
               </div>
@@ -414,7 +415,7 @@ function ActionButton({
 function ProgressBar({ current, total }: { current: number; total: number }) {
   const pct = Math.min((current / total) * 100, 100);
   return (
-    <div className="flex flex-col gap-1.5 w-full max-w-[120px]">
+    <div className="flex flex-col gap-1.5 w-full" style={{ maxWidth: '120px' }}>
       <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
         <div className="h-full bg-blue-500 rounded-full transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
       </div>
@@ -428,20 +429,21 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
 export default function RiskStratification() {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
+  const { patients } = usePatients();
 
   const [toast, setToast] = useState('');
   const [bhwPatient, setBhwPatient] = useState<ModalPatient>(null);
   const [dotPatient, setDotPatient] = useState<ModalPatient>(null);
 
   const stats = {
-    total: MOCK_PATIENTS.length,
-    atRisk: MOCK_PATIENTS.filter((p) => p.riskTier !== 'safe').length,
-    safe: MOCK_PATIENTS.filter((p) => p.riskTier === 'safe').length,
-    month3: MOCK_PATIENTS.filter((p) => p.month3Protected).length,
+    total: patients.length,
+    atRisk: patients.filter((p) => p.riskTier !== 'safe').length,
+    safe: patients.filter((p) => p.riskTier === 'safe').length,
+    month3: patients.filter((p) => p.month3Protected).length,
   };
 
   const tierOrder: RiskTier[] = ['tier3', 'tier2', 'tier1', 'safe'];
-  const sorted = [...MOCK_PATIENTS].sort(
+  const sorted = [...patients].sort(
     (a, b) => tierOrder.indexOf(a.riskTier) - tierOrder.indexOf(b.riskTier)
   );
 
@@ -509,7 +511,7 @@ export default function RiskStratification() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
             {/* Escalation Reset Rule */}
-            <div className="info-block lg:col-span-1 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-3xl p-6 text-white shadow-lg shadow-blue-900/10 flex flex-col justify-center relative overflow-hidden">
+            <div className="info-block lg:col-span-1 rounded-3xl p-6 text-white shadow-lg shadow-blue-900/10 flex flex-col justify-center relative overflow-hidden" style={{ backgroundImage: 'linear-gradient(to bottom right, rgb(37, 99, 235), rgb(67, 56, 202))' }}>
               <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10" />
               <div className="flex items-center gap-3 mb-3 relative z-10">
                 <ShieldCheck size={20} className="text-blue-300" />
@@ -568,7 +570,7 @@ export default function RiskStratification() {
                     className="escalation-row group bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_2px_10px_rgb(0,0,0,0.02)] hover:shadow-md hover:border-blue-100 cursor-pointer transition-all flex flex-col lg:grid lg:grid-cols-[2fr_1fr_1.5fr_2fr_1.5fr] gap-4 lg:items-center relative overflow-hidden"
                   >
                     {/* Hover indicator */}
-                    <div className="absolute left-0 top-0 w-1 h-full bg-gradient-to-b from-blue-400 to-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="absolute left-0 top-0 w-1 h-full opacity-0 group-hover:opacity-100 transition-opacity" style={{ backgroundImage: 'linear-gradient(to bottom, rgb(96, 165, 250), rgb(99, 102, 241))' }} />
 
                     {/* 1. Patient Name/ID */}
                     <div>

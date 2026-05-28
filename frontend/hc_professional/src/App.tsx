@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { PatientProvider } from './context/PatientContext';
 import DoseReconciliation from './pages/DoseReconciliation';
 import Login from './pages/Login';
 import PatientRoster from './pages/PatientRoster';
@@ -67,9 +68,11 @@ export default function App() {
         }
       `}</style>
       <AuthProvider>
-        <BrowserRouter>
-          <AnimatedRoutes/>
-        </BrowserRouter>
+        <PatientProvider>
+          <BrowserRouter>
+            <AnimatedRoutes/>
+          </BrowserRouter>
+        </PatientProvider>
       </AuthProvider>
     </>
   );

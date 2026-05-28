@@ -1,134 +1,16 @@
 import { Activity, AlertCircle, ChevronRight, Wifi, Zap } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import type { AdherenceStatusEnum, WebAdherenceDayEntry, WebAdherenceMonthResponse } from '../api_types/Web_AdherenceMonthResponse';
-import type { WebGamificationResponse } from '../api_types/Web_GamificationResponse';
-import type { WebPatientEntry } from '../api_types/Web_GetAllPatientsResponse';
-import type { WebPatientDetailResponse } from '../api_types/Web_PatientDetailResponse';
 import HeartQuota from '../components/HeartQuota';
 import RiskBadge from '../components/RiskBadge';
 import Sidebar from '../components/Sidebar';
+import { usePatients } from '../context/PatientContext';
 import { type Patient } from '../data/mockData';
-import { toPenaltyEvent } from '../services/adapters';
-import {
-    getAllPatients,
-    getPatient,
-    getPatientAdherenceMonth,
-    getPatientStats,
-} from '../services/patient';
 
 type RiskFilter = 'all' | 'high' | 'low';
 
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-const DEFAULT_WEEKLY_COMPLIANCE: Patient['weeklyCompliance'] = [
-  { day: 'Mon', status: 'done' },
-  { day: 'Tue', status: 'done' },
-  { day: 'Wed', status: 'done' },
-  { day: 'Thu', status: 'done' },
-  { day: 'Fri', status: 'done' },
-  { day: 'Sat', status: 'pending' },
-  { day: 'Sun', status: 'pending' },
-];
-
-function getAgeFromBirthYear(birthyear: number): number {
-  return Math.max(0, new Date().getFullYear() - birthyear);
-}
-
-function getAgeProfile(age: number): Patient['ageProfile'] {
-  if (age < 18) return 'Child';
-  if (age >= 60) return 'Senior';
-  return 'Adult';
-}
-
-function toComplianceStatus(status: AdherenceStatusEnum): 'done' | 'missed' | 'pending' {
-  if (status === 'app_recorded' || status === 'provider_reconciled') return 'done';
-  if (status === 'technical_miss' || status === 'unverified_absence') return 'missed';
-  return 'pending';
-}
-
-function buildWeeklyCompliance(days: WebAdherenceDayEntry[]): Patient['weeklyCompliance'] {
-  if (days.length === 0) return DEFAULT_WEEKLY_COMPLIANCE;
-
-  const recentDays = [...days]
-    .sort((left, right) => new Date(left.date).getTime() - new Date(right.date).getTime())
-    .slice(-7);
-
-  if (recentDays.length < 7) return DEFAULT_WEEKLY_COMPLIANCE;
-
-  const labels: Patient['weeklyCompliance'] = [
-    { day: 'Mon', status: 'pending' },
-    { day: 'Tue', status: 'pending' },
-    { day: 'Wed', status: 'pending' },
-    { day: 'Thu', status: 'pending' },
-    { day: 'Fri', status: 'pending' },
-    { day: 'Sat', status: 'pending' },
-    { day: 'Sun', status: 'pending' },
-  ];
-
-  return labels.map((entry, index) => ({
-    day: entry.day,
-    status: toComplianceStatus(recentDays[index].status),
-  }));
-}
-
-function buildPatientFromApi(
-  summary: WebPatientEntry,
-  detail: WebPatientDetailResponse | null,
-  stats: WebGamificationResponse | null,
-  adherence: WebAdherenceMonthResponse | null,
-): Patient {
-  const age = getAgeFromBirthYear(summary.birthyear);
-  const heartQuota = stats?.heart_quota ?? 0;
-  const adherenceDays = adherence?.adherence_days ?? [];
-
-  // TODO: replace this heuristic once the backend exposes risk_tier on the patient summary.
-  const riskTier: Patient['riskTier'] =
-    heartQuota === 0 || (stats?.current_streak ?? 0) <= 3
-      ? 'tier3'
-      : (stats?.current_streak ?? 0) <= 7
-        ? 'tier2'
-        : (stats?.current_streak ?? 0) <= 14
-          ? 'tier1'
-          : 'safe';
-
-  // TODO: the backend does not provide roster metadata yet, so these values are placeholders.
-  return {
-    id: String(summary.id),
-    name: `${summary.firstname} ${summary.lastname}`,
-    age,
-    ageProfile: getAgeProfile(age),
-    clinic: 'TODO: backend clinic name unavailable',
-    provider: 'TODO: backend provider name unavailable',
-    bhw: 'TODO: backend BHW unavailable',
-    patientId: `TODO-${summary.id}`,
-    regimentStart: detail?.regimen_start ? new Date(detail.regimen_start).toLocaleDateString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    }) : 'TODO: backend regimen start unavailable',
-    currentDay: detail?.current_day ?? 0,
-    totalDays: detail?.total_days ?? stats?.total_regimen_days ?? 0,
-    currentStreak: stats?.current_streak ?? 0,
-    bestStreak: stats?.best_streak ?? stats?.current_streak ?? 0,
-    heartQuota,
-    riskTier,
-    lastActive: 'TODO: backend last active label unavailable',
-    triggerReason: 'TODO: backend trigger reason unavailable',
-    lastSyncLabel: 'TODO: backend sync label unavailable',
-    symptomReported: adherenceDays.flatMap((day) => day.symptoms ?? []).slice(0, 3),
-    weeklyCompliance: buildWeeklyCompliance(adherenceDays),
-    anomalousEntries: [],
-    penaltyHistory: stats?.penalty_history.map(toPenaltyEvent) ?? [],
-    pdcTrend: [],
-    heatmapMonth: adherence ? `MONTH ${adherence.month}/${adherence.year}` : 'TODO: backend month unavailable',
-    heatmapStartDay: 0,
-    heatmapDays: [],
-    monthPDC: adherence?.month_pdc ?? 0,
-    pdcTarget: adherence?.pdc_target ?? detail?.pdc_target ?? 85,
-    month3Protected: detail?.month3_protected ?? false,
-  };
-}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -277,47 +159,9 @@ function PatientCardSkeleton() {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function PatientRoster() {
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState('');
+  const { patients, patientsLoading, patientsError } = usePatients();
   const [filter, setFilter] = useState<RiskFilter>('all');
   const [search, setSearch] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setFetchError('');
-
-    getAllPatients()
-      .then(async (res) => {
-        const enriched = await Promise.all(
-          res.patients.map(async (summary) => {
-            const [detailResult, statsResult, adherenceResult] = await Promise.allSettled([
-              getPatient({ patient_id: summary.id }),
-              getPatientStats({ patient_id: summary.id }),
-              getPatientAdherenceMonth({ patient_id: summary.id, payload: { month: new Date().getMonth() + 1, year: new Date().getFullYear() } }),
-            ]);
-
-            const detail = detailResult.status === 'fulfilled' ? detailResult.value : null;
-            const stats = statsResult.status === 'fulfilled' ? statsResult.value : null;
-            const adherence = adherenceResult.status === 'fulfilled' ? adherenceResult.value : null;
-
-            return buildPatientFromApi(summary, detail, stats, adherence);
-          })
-        );
-
-        if (cancelled) return;
-        setPatients(enriched);
-      })
-      .catch(() => {
-        if (!cancelled) setFetchError('Failed to load patients. Please refresh.');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, []);
 
   const filtered = patients.filter((p) => {
     const matchSearch =
@@ -354,7 +198,7 @@ export default function PatientRoster() {
                 Patient Roster
               </h1>
               <p className="text-sm text-slate-500 mt-2 font-medium">
-                {loading
+                {patientsLoading
                   ? 'Syncing active profiles…'
                   : `Tracking ${filtered.length} active patient${filtered.length !== 1 ? 's' : ''}`}
               </p>
@@ -362,16 +206,16 @@ export default function PatientRoster() {
           </div>
 
           {/* Error banner */}
-          {fetchError && (
+          {patientsError && (
             <div className="flex items-center gap-3 bg-red-50 text-red-600 border border-red-100 text-sm rounded-xl px-5 py-4 mb-8 shadow-sm">
               <AlertCircle size={20} className="shrink-0" />
-              <span className="font-bold">{fetchError}</span>
+              <span className="font-bold">{patientsError}</span>
             </div>
           )}
 
           {/* Cards Container */}
           <div className="flex flex-col gap-5">
-            {loading ? (
+            {patientsLoading ? (
               Array.from({ length: 3 }).map((_, i) => <PatientCardSkeleton key={i} />)
             ) : filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-slate-400 bg-white rounded-3xl border border-slate-100 border-dashed">
