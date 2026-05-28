@@ -30,17 +30,17 @@ object VideoEncryptor {
         return iv + encryptedData
     }
 
-    fun decrypt(encryptedBytes: ByteArray): ByteArray {
-        if (encryptedBytes.size < 16) throw IllegalArgumentException("Ciphertext size is too small")
-        
-        val iv = encryptedBytes.sliceArray(0..15)
-        val data = encryptedBytes.sliceArray(16 until encryptedBytes.size)
-        
-        val keySpec = SecretKeySpec(keyBytes, "AES")
-        val cipher = Cipher.getInstance(ALGORITHM)
-        val ivSpec = IvParameterSpec(iv)
-        
-        cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
-        return cipher.doFinal(data)
-    }
+//    fun decrypt(encryptedBytes: ByteArray): ByteArray {
+//        if (encryptedBytes.size < 16) throw IllegalArgumentException("Ciphertext size is too small")
+//
+//        val iv = encryptedBytes.sliceArray(0..15)
+//        val data = encryptedBytes.sliceArray(16 until encryptedBytes.size)
+//
+//        val keySpec = SecretKeySpec(keyBytes, "AES")
+//        val cipher = Cipher.getInstance(ALGORITHM)
+//        val ivSpec = IvParameterSpec(iv)
+//
+//        cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
+//        return cipher.doFinal(data)
+//    }
 }
