@@ -174,7 +174,7 @@ export default function Login({ onLogin }: LoginProps) {
             <Activity size={16} className="text-blue-400" />
             Patient Vitals Logged
           </div>
-          <div className="pop-bubble absolute bottom-[30%] right-[8%] bg-indigo-500/80 backdrop-blur-md border border-indigo-400/30 text-white font-medium px-4 py-2.5 rounded-2xl rounded-br-sm shadow-2xl text-sm transform -rotate-1 flex items-center gap-2">
+          <div className="pop-bubble absolute bottom-[35%] right-[8%] bg-indigo-500/80 backdrop-blur-md border border-indigo-400/30 text-white font-medium px-4 py-2.5 rounded-2xl rounded-br-sm shadow-2xl text-sm transform -rotate-1 flex items-center gap-2">
             <ShieldCheck size={16} className="text-indigo-100" />
             VOT Verified
           </div>
