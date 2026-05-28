@@ -205,7 +205,7 @@ fun SessionLaunchScreen(
                         .graphicsLayer(scaleX = scale2, scaleY = scale2, alpha = alpha2)
                         .background(
                             brush = Brush.radialGradient(
-                                colors = listOf(glowingColor.copy(alpha = 0.5f), Color.Transparent)
+                                colors = listOf(glowingColor.copy(alpha = 0.8f), Color.Transparent)
                             ),
                             shape = CircleShape
                         )
@@ -218,7 +218,7 @@ fun SessionLaunchScreen(
                         .graphicsLayer(scaleX = scale1, scaleY = scale1, alpha = alpha1)
                         .background(
                             brush = Brush.radialGradient(
-                                colors = listOf(glowingColor.copy(alpha = 0.6f), Color.Transparent)
+                                colors = listOf(glowingColor.copy(alpha = 0.9f), Color.Transparent)
                             ),
                             shape = CircleShape
                         )
