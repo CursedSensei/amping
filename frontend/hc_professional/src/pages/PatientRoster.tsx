@@ -1,18 +1,134 @@
-import { AlertCircle, ChevronRight, Wifi, Zap, Activity } from 'lucide-react';
-import { useEffect, useState, useRef } from 'react';
+import { Activity, AlertCircle, ChevronRight, Wifi, Zap } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import gsap from 'gsap';
 
+import type { AdherenceStatusEnum, WebAdherenceDayEntry, WebAdherenceMonthResponse } from '../api_types/Web_AdherenceMonthResponse';
+import type { WebGamificationResponse } from '../api_types/Web_GamificationResponse';
+import type { WebPatientEntry } from '../api_types/Web_GetAllPatientsResponse';
+import type { WebPatientDetailResponse } from '../api_types/Web_PatientDetailResponse';
 import HeartQuota from '../components/HeartQuota';
 import RiskBadge from '../components/RiskBadge';
 import Sidebar from '../components/Sidebar';
 import { type Patient } from '../data/mockData';
-import { toPatientListEntry } from '../services/adapters';
-import { getPatients } from '../services/api';
+import { toPenaltyEvent } from '../services/adapters';
+import {
+    getAllPatients,
+    getPatient,
+    getPatientAdherenceMonth,
+    getPatientStats,
+} from '../services/patient';
 
 type RiskFilter = 'all' | 'high' | 'low';
 
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const DEFAULT_WEEKLY_COMPLIANCE: Patient['weeklyCompliance'] = [
+  { day: 'Mon', status: 'done' },
+  { day: 'Tue', status: 'done' },
+  { day: 'Wed', status: 'done' },
+  { day: 'Thu', status: 'done' },
+  { day: 'Fri', status: 'done' },
+  { day: 'Sat', status: 'pending' },
+  { day: 'Sun', status: 'pending' },
+];
+
+function getAgeFromBirthYear(birthyear: number): number {
+  return Math.max(0, new Date().getFullYear() - birthyear);
+}
+
+function getAgeProfile(age: number): Patient['ageProfile'] {
+  if (age < 18) return 'Child';
+  if (age >= 60) return 'Senior';
+  return 'Adult';
+}
+
+function toComplianceStatus(status: AdherenceStatusEnum): 'done' | 'missed' | 'pending' {
+  if (status === 'app_recorded' || status === 'provider_reconciled') return 'done';
+  if (status === 'technical_miss' || status === 'unverified_absence') return 'missed';
+  return 'pending';
+}
+
+function buildWeeklyCompliance(days: WebAdherenceDayEntry[]): Patient['weeklyCompliance'] {
+  if (days.length === 0) return DEFAULT_WEEKLY_COMPLIANCE;
+
+  const recentDays = [...days]
+    .sort((left, right) => new Date(left.date).getTime() - new Date(right.date).getTime())
+    .slice(-7);
+
+  if (recentDays.length < 7) return DEFAULT_WEEKLY_COMPLIANCE;
+
+  const labels: Patient['weeklyCompliance'] = [
+    { day: 'Mon', status: 'pending' },
+    { day: 'Tue', status: 'pending' },
+    { day: 'Wed', status: 'pending' },
+    { day: 'Thu', status: 'pending' },
+    { day: 'Fri', status: 'pending' },
+    { day: 'Sat', status: 'pending' },
+    { day: 'Sun', status: 'pending' },
+  ];
+
+  return labels.map((entry, index) => ({
+    day: entry.day,
+    status: toComplianceStatus(recentDays[index].status),
+  }));
+}
+
+function buildPatientFromApi(
+  summary: WebPatientEntry,
+  detail: WebPatientDetailResponse | null,
+  stats: WebGamificationResponse | null,
+  adherence: WebAdherenceMonthResponse | null,
+): Patient {
+  const age = getAgeFromBirthYear(summary.birthyear);
+  const heartQuota = stats?.heart_quota ?? 0;
+  const adherenceDays = adherence?.adherence_days ?? [];
+
+  // TODO: replace this heuristic once the backend exposes risk_tier on the patient summary.
+  const riskTier: Patient['riskTier'] =
+    heartQuota === 0 || (stats?.current_streak ?? 0) <= 3
+      ? 'tier3'
+      : (stats?.current_streak ?? 0) <= 7
+        ? 'tier2'
+        : (stats?.current_streak ?? 0) <= 14
+          ? 'tier1'
+          : 'safe';
+
+  // TODO: the backend does not provide roster metadata yet, so these values are placeholders.
+  return {
+    id: String(summary.id),
+    name: `${summary.firstname} ${summary.lastname}`,
+    age,
+    ageProfile: getAgeProfile(age),
+    clinic: 'TODO: backend clinic name unavailable',
+    provider: 'TODO: backend provider name unavailable',
+    bhw: 'TODO: backend BHW unavailable',
+    patientId: `TODO-${summary.id}`,
+    regimentStart: detail?.regimen_start ? new Date(detail.regimen_start).toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    }) : 'TODO: backend regimen start unavailable',
+    currentDay: detail?.current_day ?? 0,
+    totalDays: detail?.total_days ?? stats?.total_regimen_days ?? 0,
+    currentStreak: stats?.current_streak ?? 0,
+    bestStreak: stats?.best_streak ?? stats?.current_streak ?? 0,
+    heartQuota,
+    riskTier,
+    lastActive: 'TODO: backend last active label unavailable',
+    triggerReason: 'TODO: backend trigger reason unavailable',
+    lastSyncLabel: 'TODO: backend sync label unavailable',
+    symptomReported: adherenceDays.flatMap((day) => day.symptoms ?? []).slice(0, 3),
+    weeklyCompliance: buildWeeklyCompliance(adherenceDays),
+    anomalousEntries: [],
+    penaltyHistory: stats?.penalty_history.map(toPenaltyEvent) ?? [],
+    pdcTrend: [],
+    heatmapMonth: adherence ? `MONTH ${adherence.month}/${adherence.year}` : 'TODO: backend month unavailable',
+    heatmapStartDay: 0,
+    heatmapDays: [],
+    monthPDC: adherence?.month_pdc ?? 0,
+    pdcTarget: adherence?.pdc_target ?? detail?.pdc_target ?? 85,
+    month3Protected: detail?.month3_protected ?? false,
+  };
+}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -45,7 +161,7 @@ function PatientCard({ patient }: { patient: Patient }) {
       onClick={() => navigate(`/patient/${patient.id}`)}
     >
       {/* Decorative hover gradient */}
-      <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-blue-400 to-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+      <div className="absolute top-0 left-0 w-1 h-full bg-linear-to-b from-blue-400 to-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity" />
 
       {/* Header row */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-5">
@@ -166,18 +282,32 @@ export default function PatientRoster() {
   const [fetchError, setFetchError] = useState('');
   const [filter, setFilter] = useState<RiskFilter>('all');
   const [search, setSearch] = useState('');
-  
-  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setFetchError('');
 
-    getPatients()
-      .then((res) => {
+    getAllPatients()
+      .then(async (res) => {
+        const enriched = await Promise.all(
+          res.patients.map(async (summary) => {
+            const [detailResult, statsResult, adherenceResult] = await Promise.allSettled([
+              getPatient({ patient_id: summary.id }),
+              getPatientStats({ patient_id: summary.id }),
+              getPatientAdherenceMonth({ patient_id: summary.id, payload: { month: new Date().getMonth() + 1, year: new Date().getFullYear() } }),
+            ]);
+
+            const detail = detailResult.status === 'fulfilled' ? detailResult.value : null;
+            const stats = statsResult.status === 'fulfilled' ? statsResult.value : null;
+            const adherence = adherenceResult.status === 'fulfilled' ? adherenceResult.value : null;
+
+            return buildPatientFromApi(summary, detail, stats, adherence);
+          })
+        );
+
         if (cancelled) return;
-        setPatients(res.patients.map((p) => toPatientListEntry(p) as Patient));
+        setPatients(enriched);
       })
       .catch(() => {
         if (!cancelled) setFetchError('Failed to load patients. Please refresh.');
@@ -201,25 +331,6 @@ export default function PatientRoster() {
     return matchSearch && matchFilter;
   });
 
-  // GSAP Animation for Cards
-  useEffect(() => {
-    if (!loading && filtered.length > 0) {
-      const ctx = gsap.context(() => {
-        gsap.fromTo(
-          '.patient-card',
-          { y: 30, opacity: 0 },
-          {
-            y: 0,
-            opacity: 1,
-            duration: 0.5,
-            stagger: 0.08,
-            ease: 'power3.out',
-          }
-        );
-      }, containerRef);
-      return () => ctx.revert();
-    }
-  }, [loading, filtered]); // Re-runs animation when search/filter updates the list
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
@@ -259,7 +370,7 @@ export default function PatientRoster() {
           )}
 
           {/* Cards Container */}
-          <div ref={containerRef} className="flex flex-col gap-5">
+          <div className="flex flex-col gap-5">
             {loading ? (
               Array.from({ length: 3 }).map((_, i) => <PatientCardSkeleton key={i} />)
             ) : filtered.length === 0 ? (

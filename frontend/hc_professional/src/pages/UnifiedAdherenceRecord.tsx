@@ -1,36 +1,36 @@
-import { useState, useRef, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft,
-  Download,
-  ChevronLeft,
-  ChevronRight,
-  Zap,
-  ShieldCheck,
-  Info,
-  X,
-  Plus,
-  AlertCircle,
-  Thermometer,
-  Loader2,
+    AlertCircle,
+    ArrowLeft,
+    ChevronLeft,
+    ChevronRight,
+    Download,
+    Info,
+    Loader2,
+    Plus,
+    ShieldCheck,
+    Thermometer,
+    X,
+    Zap,
 } from 'lucide-react';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  ReferenceLine,
-} from 'recharts';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useReactToPrint } from 'react-to-print';
-import { type DayStatus, type PDCPoint, type PenaltyEvent } from '../data/mockData';
-import HeartQuota from '../components/HeartQuota';
-import { getPatient, getAdherenceMonth, getGamification } from '../services/api';
-import { buildHeatmapFromApi, toPenaltyEvent } from '../services/adapters';
-import type { WebPatientDetailResponse } from '../api_types/Web_PatientDetailResponse';
+import {
+    Line,
+    LineChart,
+    ReferenceLine,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis,
+} from 'recharts';
 import type { WebAdherenceMonthResponse } from '../api_types/Web_AdherenceMonthResponse';
 import type { WebGamificationResponse } from '../api_types/Web_GamificationResponse';
+import type { WebPatientDetailResponse } from '../api_types/Web_PatientDetailResponse';
+import HeartQuota from '../components/HeartQuota';
+import { type DayStatus, type PDCPoint, type PenaltyEvent } from '../data/mockData';
+import { buildHeatmapFromApi, toPenaltyEvent } from '../services/adapters';
+import { getPatient, getPatientAdherenceMonth, getPatientStats } from '../services/patient';
 
 // ─── Local grid cell type ─────────────────────────────────────────────────
 //  'empty'  = day exists in calendar but is before the patient's regimen start
@@ -335,7 +335,7 @@ export default function UnifiedAdherenceRecord() {
   useEffect(() => {
     if (isNaN(numericId)) return;
     setLoading(true);
-    Promise.all([getPatient(numericId), getGamification(numericId)])
+    Promise.all([getPatient({ patient_id: numericId }), getPatientStats({ patient_id: numericId })])
       .then(([p, g]) => {
         setPatientDetail(p);
         setGamification(g);
@@ -351,7 +351,8 @@ export default function UnifiedAdherenceRecord() {
     const year  = currentDate.getFullYear();
     setAdherenceLoading(true);
     setSelectedCell(null);
-    getAdherenceMonth(numericId, month, year)
+    // TODO: the backend patient adherence endpoint currently derives month/year server-side.
+    getPatientAdherenceMonth({ patient_id: numericId, payload: { month, year } })
       .then(setAdherence)
       .catch(() => setAdherence(null))
       .finally(() => setAdherenceLoading(false));

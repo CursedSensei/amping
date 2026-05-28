@@ -32,8 +32,8 @@ def get_adherence_month(request: HttpRequest, patient_id: int, filter: Query[Web
                 id=record.id,
                 date=record.date,
                 status=record.status,
-                symptoms=record.symptoms,
-                video_link=record.video_link
+                symptoms=[symptom.symptom for symptom in SymptomRecord.objects.filter(adherence_record=record)],
+                video_link=record.video_url
             )
             for record in adherence_days
         ]
@@ -80,9 +80,9 @@ def reconcile_anomalies(request: HttpRequest, patient_id: int, payload: Web_Reco
 
     response = Web_ReconcileAnomalyResponse(
         reconciled_count=reconciled_count,
-        updated_streak=patient_stats.streak,
+        updated_streak=patient_stats.current_streak,
         updated_heart_quota=patient_stats.heart_quota,
-        updated_pdc=patient_stats.pdc
+        updated_pdc=0.8
     )
 
     return response

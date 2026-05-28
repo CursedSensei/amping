@@ -5,7 +5,7 @@ import type { WebPatientDetailResponse } from '../api_types/Web_PatientDetailRes
 import { ReconciliationMethodEnum } from '../api_types/Web_ReconcileAnomalyPayload';
 import { type AnomalousEntry } from '../data/mockData';
 import { toAnomalousEntry } from '../services/adapters';
-import { getAnomalousEntries, getPatient, reconcileAnomalies } from '../services/api';
+import { getAnomalousEntries, getPatient, reconcileAnomalies } from '../services/patient';
 
 // ─── Status config ──────────────────────────────────────────────────────────
 
@@ -42,7 +42,7 @@ function Toast({ onDismiss }: { onDismiss: () => void }) {
   }, [onDismiss]);
 
   return (
-    <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-3 bg-emerald-600 text-white text-sm font-semibold px-5 py-4 rounded-xl shadow-2xl max-w-lg w-[90%]">
+    <div className="fixed top-5 left-1/2 -translate-x-1/2 z-200 flex items-center gap-3 bg-emerald-600 text-white text-sm font-semibold px-5 py-4 rounded-xl shadow-2xl max-w-lg w-[90%]">
       <CheckCircle2 size={22} className="shrink-0" />
       <span>Reconciliation applied. Penalties reversed. Streak restored.</span>
       <button onClick={onDismiss} className="ml-auto text-white/70 hover:text-white transition-colors">
@@ -145,7 +145,7 @@ function ReconcileModal({
           <button
             onClick={() => onConfirm(method, reason)}
             disabled={!reason.trim() || submitting}
-            className="flex-[2] bg-emerald-600 text-white text-sm font-semibold py-3 rounded-xl hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+            className="flex-2 bg-emerald-600 text-white text-sm font-semibold py-3 rounded-xl hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
           >
             {submitting ? (
               <>
@@ -194,8 +194,8 @@ export default function DoseReconciliation() {
     setFetchError('');
 
     Promise.all([
-      getPatient(numericId),
-      getAnomalousEntries(numericId),
+      getPatient({ patient_id: numericId }),
+      getAnomalousEntries({ patient_id: numericId }),
     ])
       .then(([detail, anomalousRes]) => {
         if (cancelled) return;
@@ -250,10 +250,13 @@ export default function DoseReconciliation() {
 
     setSubmitting(true);
     try {
-      const result = await reconcileAnomalies(numericId, {
-        entry_ids: entryIds,
-        verification_method: method,
-        reason,
+      const result = await reconcileAnomalies({
+        patient_id: numericId,
+        payload: {
+          entry_ids: entryIds,
+          verification_method: method,
+          reason,
+        },
       });
 
       setReconciled((prev) => new Set([...prev, ...selected]));
