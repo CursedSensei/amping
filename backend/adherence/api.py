@@ -124,9 +124,11 @@ def get_adherence_video_endpoint(request: HttpRequest):
     patient = getPatientUserByToken(request)
     record, created = AdherenceDayRecord.objects.get_or_create(patient=patient, date=date.today())
 
+    # Build absolute URI dynamically to support both local and production environments
+    base_uri = request.build_absolute_uri('/').rstrip('/')
     return Mobile_GetAdherenceVideoEndpointResponse(
         adherence_day_id=record.id,
-        video_endpoint=f"https://amping.onrender.com/api/v1/mobile/upload_video/{record.id}/"
+        video_endpoint=f"{base_uri}/api/v1/mobile/upload_video/{record.id}/"
     )
 
 @mobile_v1_router.post("/upload_video/{record_id}/")
