@@ -143,7 +143,7 @@ def get_patient_detail(request: HttpRequest, patient_id: int):
     patient_user = get_object_or_404(PatientUser, id=patient_id, healthcare_provider=request.user)
     patient_stats = get_object_or_404(PatientStats, patient=patient_user)
     guardians = [
-        Web_PatientGuardianEntry(
+        Web_PatientDetailResponse.Web_PatientGuardianDetailEntry(
             id=guardian.id,
             firstname=guardian.firstname,
             lastname=guardian.lastname,

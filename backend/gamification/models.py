@@ -1,9 +1,10 @@
 from django.db import models
 
 class PenaltyTierEnum(models.IntegerChoices):
-    TIER_1 = 1, 'Tier 1'
-    TIER_2 = 2, 'Tier 2'
-    TIER_3 = 3, 'Tier 3'
+    TIER_1 = 1, 'Tier 1 — Soft Warning'
+    TIER_2 = 2, 'Tier 2 — Partial Reset A'
+    TIER_3 = 3, 'Tier 3 — Partial Reset B'
+    TIER_4 = 4, 'Tier 4 — Full Reset + Escalation'
 
 class PatientStats(models.Model):
     id = models.AutoField(primary_key=True)
@@ -15,6 +16,9 @@ class PatientStats(models.Model):
     current_streak = models.IntegerField(default=0)
     best_streak = models.IntegerField(default=0)
     heart_quota = models.IntegerField(default=3)
+
+    forgiveness_quota_used_this_month = models.IntegerField(default=3)
+    forgiveness_quota_period_start = models.DateField(null=True, blank=True)
 
     month3_protected = models.BooleanField(default=False)
 

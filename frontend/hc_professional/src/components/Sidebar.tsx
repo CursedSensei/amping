@@ -1,7 +1,8 @@
+import { AlertCircle, AlertTriangle, CheckCircle2, LogOut, Search, ShieldCheck, Users } from 'lucide-react';
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Search, Shield, Users, AlertTriangle, LogOut } from 'lucide-react';
-import { MOCK_PATIENTS } from '../data/mockData';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { usePatients } from '../context/PatientContext';
 
 type RiskFilter = 'all' | 'high' | 'low';
 
@@ -9,13 +10,15 @@ interface SidebarProps {
   onSearch?: (q: string) => void;
   onFilter?: (f: RiskFilter) => void;
   activeFilter?: RiskFilter;
-  onLogout?: () => void;
 }
 
-export default function Sidebar({ onSearch, onFilter, activeFilter = 'all', onLogout }: SidebarProps) {
+export default function Sidebar({ onSearch, onFilter, activeFilter = 'all' }: SidebarProps) {
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
+
+  const { logout } = useAuth();
+  const { patients } = usePatients();
 
   const handleSearch = (val: string) => {
     setQuery(val);
@@ -25,104 +28,161 @@ export default function Sidebar({ onSearch, onFilter, activeFilter = 'all', onLo
   const isRoster = location.pathname === '/';
   const isRisk = location.pathname === '/risk';
 
-  const highRiskCount = MOCK_PATIENTS.filter(
+  const highRiskCount = patients.filter(
     (p) => p.riskTier === 'tier2' || p.riskTier === 'tier3'
   ).length;
 
   return (
-    <aside className="w-64 min-h-screen bg-[#0f1117] text-white flex flex-col shrink-0">
-      {/* Brand */}
-      <div className="p-5 border-b border-white/10">
-        <div className="flex items-center gap-2 mb-1">
-          <div className="w-7 h-7 rounded-lg bg-blue-500 flex items-center justify-center">
-            <Shield size={14} className="text-white" />
-          </div>
-          <span className="font-semibold text-sm">Provider Console</span>
-        </div>
-        <p className="text-xs text-gray-400 ml-9">Actionable Analytics</p>
+    <aside className="relative w-72 min-h-screen bg-[#0A0F24] flex flex-col shrink-0 overflow-hidden border-r border-white/5">
+      
+      {/* Ambient Background Glows (Matching Login Page) */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div
+          className="absolute top-0 left-0 w-full h-full"
+          style={{ backgroundImage: 'linear-gradient(to bottom right, rgba(37, 99, 235, 0.10), rgba(147, 51, 234, 0.10))' }}
+        />
+        <div className="absolute -top-24 -left-24 w-64 h-64 rounded-full bg-blue-500/10 blur-[80px]" />
       </div>
 
-      {/* Nav */}
-      <nav className="p-3 flex-1">
-        <p className="text-[10px] uppercase tracking-widest text-gray-500 px-2 mb-2">Navigation</p>
+      {/* Relative wrapper keeps content above the ambient glows */}
+      <div className="relative z-10 flex flex-col h-full">
+        
+        {/* Brand */}
+        <div className="p-6 border-b border-white/10">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-white/10 backdrop-blur border border-white/20">
+              <ShieldCheck size={20} className="text-blue-300" />
+            </div>
+            <div>
+              <h1 className="text-lg font-black text-white tracking-widest uppercase leading-none">Amping</h1>
+              <span className="text-xs text-blue-300/80 font-medium tracking-wide">Provider Console</span>
+            </div>
+          </div>
+        </div>
 
-        <button
-          onClick={() => navigate('/')}
-          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm mb-1 transition-colors ${
-            isRoster
-              ? 'bg-blue-600 text-white'
-              : 'text-gray-300 hover:bg-white/5'
-          }`}
-        >
-          <Users size={15} />
-          Patient Roster
-          <span className="ml-auto text-[11px] bg-white/10 px-1.5 py-0.5 rounded-full">
-            {MOCK_PATIENTS.length}
-          </span>
-        </button>
+        {/* Nav */}
+        <nav className="p-4 flex-none space-y-1">
+          <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-3 px-2 mt-2">
+            Navigation
+          </p>
 
-        <button
-          onClick={() => navigate('/risk')}
-          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
-            isRisk
-              ? 'bg-blue-600 text-white'
-              : 'text-gray-300 hover:bg-white/5'
-          }`}
-        >
-          <AlertTriangle size={15} />
-          Risk Stratification
-          {highRiskCount > 0 && (
-            <span className="ml-auto text-[11px] bg-red-500 text-white px-1.5 py-0.5 rounded-full">
-              {highRiskCount}
+          <button
+            onClick={() => navigate('/')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
+              isRoster
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Users size={18} className={isRoster ? 'text-white' : 'text-slate-500'} />
+            Patient Roster
+            <span className={`ml-auto text-[11px] px-2 py-0.5 rounded-full ${isRoster ? 'bg-white/20' : 'bg-white/10'}`}>
+              {patients.length}
             </span>
-          )}
-        </button>
-      </nav>
+          </button>
 
-      {/* Search + Filter — only on roster */}
-      {isRoster && (
-        <div className="p-3 border-t border-white/10">
-          <p className="text-[10px] uppercase tracking-widest text-gray-500 px-2 mb-2">Search Patient</p>
-          <div className="relative mb-3">
-            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-            <input
-              type="text"
-              placeholder="Name or ID..."
-              value={query}
-              onChange={(e) => handleSearch(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-lg pl-8 pr-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
-            />
+          <button
+            onClick={() => navigate('/risk')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
+              isRisk
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <AlertTriangle size={18} className={isRisk ? 'text-white' : 'text-slate-500'} />
+            Risk Stratification
+            {highRiskCount > 0 && (
+              <span className="ml-auto text-[11px] bg-orange-500 text-white px-2 py-0.5 rounded-full shadow-sm">
+                {highRiskCount}
+              </span>
+            )}
+          </button>
+        </nav>
+
+        {/* Search + Filter — only on roster */}
+        {isRoster && (
+          <div className="p-4 border-t border-white/5 flex-1 overflow-y-auto">
+            
+            <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-3 px-2">
+              Search Patient
+            </p>
+            <div className="relative mb-6">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Name or ID..."
+                value={query}
+                onChange={(e) => handleSearch(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all shadow-inner"
+              />
+            </div>
+
+            <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-3 px-2">
+              Filter by Risk
+            </p>
+            <div className="space-y-1">
+              <button
+                onClick={() => onFilter?.('all')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                  activeFilter === 'all'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Users size={16} className={activeFilter === 'all' ? 'text-white' : 'text-slate-500'} />
+                All Risk
+              </button>
+
+              <button
+                onClick={() => onFilter?.('high')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                  activeFilter === 'high'
+                    ? 'bg-orange-500/20 text-orange-400 border border-orange-500/20'
+                    : 'text-slate-400 hover:text-orange-400 hover:bg-white/5'
+                }`}
+              >
+                <AlertCircle size={16} className={activeFilter === 'high' ? 'text-orange-400' : 'text-slate-500'} />
+                High Risk
+              </button>
+
+              <button
+                onClick={() => onFilter?.('low')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                  activeFilter === 'low'
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20'
+                    : 'text-slate-400 hover:text-emerald-400 hover:bg-white/5'
+                }`}
+              >
+                <CheckCircle2 size={16} className={activeFilter === 'low' ? 'text-emerald-400' : 'text-slate-500'} />
+                Low Risk
+              </button>
+            </div>
           </div>
+        )}
 
-          <p className="text-[10px] uppercase tracking-widest text-gray-500 px-2 mb-2">Filter by Risk</p>
-          {(['all', 'high', 'low'] as RiskFilter[]).map((f) => (
-            <button
-              key={f}
-              onClick={() => onFilter?.(f)}
-              className={`w-full text-left px-3 py-1.5 rounded-lg text-sm mb-1 transition-colors ${
-                activeFilter === f
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-300 hover:bg-white/5'
-              }`}
+        {/* Footer */}
+        <div className="p-4 border-t border-white/10 mt-auto bg-black/10">
+          <div className="flex items-center gap-3 text-slate-400">
+            <div
+              className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-md"
+              style={{ backgroundImage: 'linear-gradient(to top right, rgb(37, 99, 235), rgb(99, 102, 241))' }}
             >
-              {f === 'all' ? 'All Risk' : f === 'high' ? 'High Risk' : 'Low Risk'}
+              AT
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-white text-sm font-bold truncate">Dr. Alicia Tan</p>
+              <p className="text-[11px] text-blue-300/70 font-medium truncate">Lapu-Lapu City HO</p>
+            </div>
+            <button 
+              onClick={logout}
+              className="p-2 rounded-lg hover:bg-white/10 hover:text-white transition-colors focus:outline-none"
+              title="Log out"
+            >
+              <LogOut size={16} className="shrink-0" />
             </button>
-          ))}
+          </div>
         </div>
-      )}
 
-      {/* Footer */}
-      <div className="p-4 border-t border-white/10">
-        <div className="flex items-center gap-2 text-gray-400 text-sm">
-          <div className="w-7 h-7 rounded-full bg-blue-700 flex items-center justify-center text-xs font-bold text-white">
-            DR
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-white text-xs font-medium truncate">Dr. Alicia Tan</p>
-            <p className="text-[11px] text-gray-500 truncate">Lapu-Lapu City HO</p>
-          </div>
-          <LogOut size={14} className="shrink-0 cursor-pointer hover:text-white transition-colors" onClick={onLogout} />
-        </div>
       </div>
     </aside>
   );

@@ -1,20 +1,18 @@
-import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import Login from './pages/Login';
-import Signup from './pages/Signup';
-import PatientRoster from './pages/PatientRoster';
-import UnifiedAdherenceRecord from './pages/UnifiedAdherenceRecord';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { PatientProvider } from './context/PatientContext';
 import DoseReconciliation from './pages/DoseReconciliation';
+import Login from './pages/Login';
+import PatientRoster from './pages/PatientRoster';
 import RiskStratification from './pages/RiskStratification';
+import Signup from './pages/Signup';
+import UnifiedAdherenceRecord from './pages/UnifiedAdherenceRecord';
 
 // ─── Page transition wrapper ────────────────────────────────────────────────
 
-function AnimatedRoutes({ isAuthed, onLogin, onLogout }: {
-  isAuthed: boolean;
-  onLogin: () => void;
-  onLogout: () => void;
-}) {
+function AnimatedRoutes() {
   const location = useLocation();
+  const { isAuthenticated} = useAuth();
 
   return (
     <div
@@ -26,33 +24,33 @@ function AnimatedRoutes({ isAuthed, onLogin, onLogout }: {
         {/* Public routes */}
         <Route
           path="/login"
-          element={isAuthed ? <Navigate to="/" replace /> : <Login onLogin={onLogin} />}
+          element={isAuthenticated ? <Navigate to="/" replace /> : <Login />}
         />
         <Route
           path="/signup"
-          element={isAuthed ? <Navigate to="/" replace /> : <Signup onLogin={onLogin} />}
+          element={isAuthenticated ? <Navigate to="/" replace /> : <Signup />}
         />
 
         {/* Protected routes */}
         <Route
           path="/"
-          element={isAuthed ? <PatientRoster onLogout={onLogout} /> : <Navigate to="/login" replace />}
+          element={isAuthenticated ? <PatientRoster /> : <Navigate to="/login" replace />}
         />
         <Route
           path="/patient/:id"
-          element={isAuthed ? <UnifiedAdherenceRecord /> : <Navigate to="/login" replace />}
+          element={isAuthenticated ? <UnifiedAdherenceRecord /> : <Navigate to="/login" replace />}
         />
         <Route
           path="/patient/:id/reconcile"
-          element={isAuthed ? <DoseReconciliation /> : <Navigate to="/login" replace />}
+          element={isAuthenticated ? <DoseReconciliation /> : <Navigate to="/login" replace />}
         />
         <Route
           path="/risk"
-          element={isAuthed ? <RiskStratification /> : <Navigate to="/login" replace />}
+          element={isAuthenticated ? <RiskStratification /> : <Navigate to="/login" replace />}
         />
 
         {/* Fallback */}
-        <Route path="*" element={<Navigate to={isAuthed ? '/' : '/login'} replace />} />
+        <Route path="*" element={<Navigate to={isAuthenticated ? '/' : '/login'} replace />} />
       </Routes>
     </div>
   );
@@ -61,21 +59,6 @@ function AnimatedRoutes({ isAuthed, onLogin, onLogout }: {
 // ─── Root ────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [isAuthed, setIsAuthed] = useState(() => sessionStorage.getItem('hc_auth') === 'true');
-
-  useEffect(() => {
-    // Sync auth state on storage events (multi-tab support)
-    const onStorage = () => setIsAuthed(sessionStorage.getItem('hc_auth') === 'true');
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
-
-  const handleLogin = () => setIsAuthed(true);
-  const handleLogout = () => {
-    sessionStorage.removeItem('hc_auth');
-    setIsAuthed(false);
-  };
-
   return (
     <>
       <style>{`
@@ -84,9 +67,13 @@ export default function App() {
           to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>
-      <BrowserRouter>
-        <AnimatedRoutes isAuthed={isAuthed} onLogin={handleLogin} onLogout={handleLogout} />
-      </BrowserRouter>
+      <AuthProvider>
+        <PatientProvider>
+          <BrowserRouter>
+            <AnimatedRoutes/>
+          </BrowserRouter>
+        </PatientProvider>
+      </AuthProvider>
     </>
   );
 }
