@@ -262,9 +262,9 @@ class SessionViewModel @Inject constructor(
             delay(500)
             val name = _uiState.value.firstname
             val welcomeMessage = when (_uiState.value.activeProfile) {
-                "youth" -> "Hey there, $name! ready for today's super check-in? How are you feeling overall, champion? Let me know so we can log your TB pill and keep that massive streak alive!"
-                "senior" -> "Good day, $name. It is time for our daily health check-in, my dear. How are you feeling overall today? Please tell me so we can complete your TB dose safely."
-                else -> "Welcome, $name, to your daily VDOT compliance session. Please indicate your current overall state of physical wellbeing so we may proceed with logging your TB medication ingestion."
+                "youth" -> "Hello $name! Ready for today? How are you feeling overall, champion? Let me know so we can keep that streak alive!"
+                "senior" -> "Good day, $name. It is time for our daily health check-in, my dear. How are you feeling today?"
+                else -> "Welcome, $name, to your daily VDOT compliance session. Please indicate your current overall state of physical wellbeing."
             }
             _uiState.update {
                 it.copy(
