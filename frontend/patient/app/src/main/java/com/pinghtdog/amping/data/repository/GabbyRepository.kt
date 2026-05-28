@@ -350,14 +350,34 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
 
         val isUploadComplete = lastUserMessage.contains("vdot upload complete") || lastUserMessage.contains("upload complete")
         if (isUploadComplete) {
-            val motivationStr = if (lastUserMessage.contains("motivation:")) {
-                messages.lastOrNull { it.role == "user" }?.content?.substringAfter("Motivation:")?.trim() ?: ""
-            } else ""
-            val motivationText = if (motivationStr.isNotEmpty()) " because of '$motivationStr'" else ""
-            val transitionText = when (profile) {
-                "youth" -> "Awesome job, champion! You successfully completed today's ingestion and uploaded the VDOT video. Remember the reason why you are taking this medication$motivationText! Keep that streak alive!"
-                "senior" -> "Splendid work, Lola. You have successfully completed your daily medication check-in and video upload. Remember the reason why you are taking this medication$motivationText. Your health is so precious, dear."
-                else -> "Ingestion verification video uploaded successfully. Remember the reason why you are taking this medication$motivationText. Compliance log updated."
+            // Extract motivation from the upload prompt if present
+            val motivation = messages.lastOrNull { it.role == "user" }
+                ?.content?.substringAfter("Motivation:", "")?.trim() ?: ""
+
+            // Check conversation history for any emotional disclosure in Phase 1
+            val emotionalKeywords = listOf("sad", "depress", "anxious", "worried", "scared",
+                "lonely", "stressed", "upset", "grief", "died", "lost", "miss", "struggling")
+            val emotionalMessage = messages
+                .filter { it.role == "user" }
+                .firstOrNull { msg -> emotionalKeywords.any { kw -> msg.content.lowercase().contains(kw) } }
+                ?.content
+
+            val transitionText = when {
+                emotionalMessage != null -> when (profile) {
+                    "youth" -> "Even on a tough day, you showed up and got it done. That takes real strength. Check-in complete — keep that streak going!"
+                    "senior" -> "Even carrying what you are carrying today, you completed your check-in, dear. That matters more than you know."
+                    else -> "Despite what you are carrying today, you completed your check-in. That is what matters. Well done."
+                }
+                motivation.isNotEmpty() -> when (profile) {
+                    "youth" -> "Check-in complete, champion! You are doing this for a reason — and you are proving every day that you can follow through. Keep it up!"
+                    "senior" -> "Splendid work, dear. You have completed your check-in for today. Every day you do this, you are honoring what matters most to you."
+                    else -> "Check-in complete. You are one day closer to where you want to be. Compliance log updated."
+                }
+                else -> when (profile) {
+                    "youth" -> "Awesome job! You completed today's check-in and uploaded your VDOT video. Keep that streak alive!"
+                    "senior" -> "Splendid work, dear. You have completed your daily medication check-in. Your health is so precious."
+                    else -> "Ingestion verification video uploaded successfully. Daily compliance log updated."
+                }
             }
             val assistantText = "$transitionText\n\n<tool_call> {\"name\": \"transition_to_success\"} </tool_call>"
             return parseResponse(assistantText)

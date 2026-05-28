@@ -381,9 +381,7 @@ class SessionViewModel @Inject constructor(
             // Inject temporary streaming bubble with helpful cold start message
             val initialHistory = _uiState.value.chatHistory.toMutableList()
             streamMessageIndex = initialHistory.size
-            // Capture the last 6 messages (including the current user message) BEFORE adding
-            // the placeholder — this is the history slice the LLM will receive as context.
-            val historyToSend = initialHistory.takeLast(6)
+            val historyToSend = initialHistory.takeLast(10)
             val sleepingMsg = "💤 Gabby is sleeping... (This may take 3-5 minutes, please keep the app open)..."
             initialHistory.add(Message(role = "assistant", content = sleepingMsg))
             _uiState.update {

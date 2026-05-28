@@ -162,6 +162,29 @@ def create_secure_proxy_app():
             "EXAMPLE RESPONSE:\n"
             "Excellent. Please hold the pill clearly in the frame, take it, and show me you have swallowed it safely. Press the button below to start filming.\n"
             "<tool_call> {\"name\": \"trigger_vdot\", \"arguments\": {\"duration_seconds\": 15}} </tool_call>"
+        ),
+        "complete": (
+            "The patient has just successfully completed their daily VDOT medication check-in and video upload.\n"
+            "Your task is to craft a warm, brief, and genuinely personal completion message.\n"
+            "\n"
+            "INSTRUCTIONS:\n"
+            "- Review the full conversation history above. If the patient shared emotional difficulty earlier "
+            "(sadness, grief, loss, worry, loneliness), acknowledge that they completed today's check-in despite "
+            "what they are carrying. Be specific — name what they shared. Do not be generic.\n"
+            "- The patient's motivation for taking this medication is in the system context. Weave it into your "
+            "message naturally, as something you genuinely remember — do not quote it literally or say 'because of X'.\n"
+            "- Be celebratory but sincere and concise. Avoid hollow or generic praise.\n"
+            "- You MUST emit this tool call at the very end of your response:\n"
+            "<tool_call> {\"name\": \"transition_to_success\"} </tool_call>\n"
+            "\n"
+            "EXAMPLE (patient shared grief, motivated by family):\n"
+            "Even on a day as heavy as this one, you showed up — for yourself and for the people who love you. "
+            "That is not a small thing. Check-in complete.\n"
+            "<tool_call> {\"name\": \"transition_to_success\"} </tool_call>\n"
+            "\n"
+            "EXAMPLE (no emotional context, patient motivated by getting well):\n"
+            "Well done. You are one step closer to getting well. Your check-in is locked in — keep that streak going.\n"
+            "<tool_call> {\"name\": \"transition_to_success\"} </tool_call>"
         )
     }
 
@@ -263,25 +286,11 @@ def create_secure_proxy_app():
             )
             print(f"Received {len(chat_messages)} messages. Last user prompt: '{prompt}'")
 
-            # --- Programmatic Fail-safe for VDOT Upload Complete ---
+            # When the patient signals upload complete, override the phase so the LLM
+            # crafts a personalized completion message using the full conversation history
+            # (Phase 1 emotional context + onboarding motivation) rather than a template.
             if "vdot upload complete" in prompt.lower() or "upload complete" in prompt.lower() or "ingestion complete" in prompt.lower():
-                motivation_text = f" because of '{motivation}'" if motivation else ""
-                congratulations = {
-                    "youth": f"Awesome job, champion! You successfully completed today's check-in and uploaded your VDOT video. Remember the reason why you are taking this medication{motivation_text}! Keep that streak alive!",
-                    "senior": f"Splendid work, Lola. You have successfully completed your daily medication check-in and video upload. Remember the reason why you are taking this medication{motivation_text}. Your health is so precious, dear.",
-                    "adult": f"Ingestion verification video uploaded successfully. Remember the reason why you are taking this medication{motivation_text}. Compliance log updated."
-                }.get(profile, f"Medication video uploaded successfully. Remember the reason why you are taking this medication{motivation_text}.")
-                
-                response_content = f"{congratulations}\n\n<tool_call> {{\"name\": \"transition_to_success\"}} </tool_call>"
-                await websocket.send_text(json.dumps({
-                    "type": "token",
-                    "content": response_content
-                }))
-                await websocket.send_text(json.dumps({
-                    "type": "done"
-                }))
-                await websocket.close()
-                return
+                current_phase = "complete"
 
             # Check if background vLLM daemon is still binding weights.
             # If so, stream friendly live status updates directly to the client rather than hanging!
@@ -422,6 +431,11 @@ def create_secure_proxy_app():
                                 }.get(profile, "\nStarting VDOT recording now.")
                                 fallback_block = f"{transition_text}\n\n<tool_call> {{\"name\": \"trigger_vdot\", \"arguments\": {{\"duration_seconds\": {duration}}}}} </tool_call>"
                                 await websocket.send_text(json.dumps({"type": "token", "content": fallback_block}))
+
+                        elif current_phase == "complete":
+                            # Always guarantee the success transition fires
+                            fallback_block = "\n\n<tool_call> {\"name\": \"transition_to_success\"} </tool_call>"
+                            await websocket.send_text(json.dumps({"type": "token", "content": fallback_block}))
 
             # 5. Yield successful completion frame and gracefully close connection
             await websocket.send_text(json.dumps({

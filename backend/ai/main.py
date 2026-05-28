@@ -284,23 +284,8 @@ async def chat_endpoint(payload: ChatPayload):
     last_user_message = messages[-1].content.lower() if messages else ""
     last_user_words = set(re.findall(r'\b\w+\b', last_user_message))
     
-    # --- UPGRADE -0.5: VDOT UPLOAD COMPLETE INTERCEPT ---
     if "vdot upload complete" in last_user_message or "upload complete" in last_user_message or "ingestion complete" in last_user_message:
-        motivation = payload.motivation or ""
-        motivation_text = f" because of '{motivation}'" if motivation else ""
-        congratulations = {
-            "youth": f"Awesome job, champion! You successfully completed today's check-in and uploaded your VDOT video. Remember the reason why you are taking this medication{motivation_text}! Keep that streak alive!",
-            "senior": f"Splendid work, Lola. You have successfully completed your daily medication check-in and video upload. Remember the reason why you are taking this medication{motivation_text}. Your health is so precious, dear.",
-            "adult": f"Ingestion verification video uploaded successfully. Remember the reason why you are taking this medication{motivation_text}. Compliance log updated."
-        }.get(profile, f"Medication video uploaded successfully. Remember the reason why you are taking this medication{motivation_text}.")
-        
-        response_content = f"{congratulations}\n\n<tool_call> {{\"name\": \"transition_to_success\"}} </tool_call>"
-        return {
-            "content": response_content,
-            "status": "success",
-            "current_phase": current_phase,
-            "clinical_notes": state.get("clinical_notes", {})
-        }
+        current_phase = "complete"
 
     # --- UPGRADE 0: CLINICAL CRISIS & SELF-HARM OVERRIDE ---
     crisis_keywords = ["kill myself", "harm myself", "hurt myself", "suicide", "end my life", "want to die", "hopeless", "give up", "cut myself", "self-harm", "wanna die", "die today"]
@@ -410,13 +395,37 @@ async def chat_endpoint(payload: ChatPayload):
             "Wonderful. No side effects noted today. Are you ready to begin your VDOT recording?\n"
             "<tool_call> {\"name\": \"transition_to_vdot\", \"arguments\": {\"side_effects\": \"none\", \"nausea_severity\": \"None\"}} </tool_call>"
         )
-    else: # vdot
+    elif current_phase == "vdot":
         phase_instructions = (
             "We are currently in Phase 3: Secure VDOT Filming.\n"
             "Warmly guide the patient to record their daily TB medication intake. Keep instructions brief, motivational, and highly focused.\n"
             "CRITICAL: Do NOT ask open-ended questions. Steer the patient directly to activate their camera stream and complete their ingestion.\n"
             "When they indicate readiness or when you prompt them, you MUST output a structured tool call strictly in this format:\n"
             "<tool_call> {\"name\": \"trigger_vdot\", \"arguments\": {\"duration_seconds\": 15}} </tool_call>"
+        )
+    else: # complete
+        phase_instructions = (
+            "The patient has just successfully completed their daily VDOT medication check-in and video upload.\n"
+            "Your task is to craft a warm, brief, and genuinely personal completion message.\n"
+            "\n"
+            "INSTRUCTIONS:\n"
+            "- Review the full conversation history above. If the patient shared emotional difficulty earlier "
+            "(sadness, grief, loss, worry, loneliness), acknowledge that they completed today's check-in despite "
+            "what they are carrying. Be specific — name what they shared. Do not be generic.\n"
+            "- The patient's motivation for taking this medication is in the system context. Weave it into your "
+            "message naturally, as something you genuinely remember — do not quote it literally or say 'because of X'.\n"
+            "- Be celebratory but sincere and concise. Avoid hollow or generic praise.\n"
+            "- You MUST emit this tool call at the very end of your response:\n"
+            "<tool_call> {\"name\": \"transition_to_success\"} </tool_call>\n"
+            "\n"
+            "EXAMPLE (patient shared grief, motivated by family):\n"
+            "Even on a day as heavy as this one, you showed up — for yourself and for the people who love you. "
+            "That is not a small thing. Check-in complete.\n"
+            "<tool_call> {\"name\": \"transition_to_success\"} </tool_call>\n"
+            "\n"
+            "EXAMPLE (no emotional context, patient motivated by getting well):\n"
+            "Well done. You are one step closer to getting well. Your check-in is locked in — keep that streak going.\n"
+            "<tool_call> {\"name\": \"transition_to_success\"} </tool_call>"
         )
 
     # Route to Modal vLLM deployment
@@ -531,6 +540,10 @@ async def chat_endpoint(payload: ChatPayload):
                                 "adult": "\nUnderstood. Standing by for ingestion confirmation. Please click the button to start the VDOT camera when ready."
                             }[profile]
                             assistant_text += f"\n{transition_text}"
+
+                    elif current_phase == "complete":
+                        # Always guarantee the success transition fires
+                        assistant_text += "\n\n<tool_call> {\"name\": \"transition_to_success\"} </tool_call>"
                 
                 # Intercept and process any tool call generated (remotely or programmatically!)
                 tool_call_match = re.search(r"<tool_call>([\s\S]*?)<\/tool_call>", assistant_text)
