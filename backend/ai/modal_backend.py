@@ -245,9 +245,23 @@ def create_secure_proxy_app():
             
             print(f"Token verified! Patient: {patient_id}, Profile: {profile}, Active Phase: {current_phase}")
 
-            # 2. Await prompt text frame from Ktor WebSocket
-            prompt = await websocket.receive_text()
-            print(f"Received patient prompt: '{prompt}'")
+            # 2. Await conversation history JSON frame from Ktor WebSocket.
+            # Format: [{"role": "user"|"assistant", "content": "..."}, ...]
+            messages_text = await websocket.receive_text()
+            try:
+                chat_messages = json.loads(messages_text)
+                if not isinstance(chat_messages, list):
+                    raise ValueError("Expected a JSON array of messages")
+            except (json.JSONDecodeError, ValueError, TypeError):
+                # Backward-compat fallback: treat as a plain-text single user prompt
+                chat_messages = [{"role": "user", "content": messages_text}]
+
+            # Derive the last user message for intercepts and fail-safe keyword matching
+            prompt = next(
+                (m.get("content", "") for m in reversed(chat_messages) if m.get("role") == "user"),
+                ""
+            )
+            print(f"Received {len(chat_messages)} messages. Last user prompt: '{prompt}'")
 
             # --- Programmatic Fail-safe for VDOT Upload Complete ---
             if "vdot upload complete" in prompt.lower() or "upload complete" in prompt.lower() or "ingestion complete" in prompt.lower():
@@ -294,12 +308,17 @@ def create_secure_proxy_app():
                 f"- PROFESSIONAL CHILD-LIKE MANNERISM: Maintain a professional, clinically supportive, and safe tone, but express it with innocent, simple, child-like mannerisms (using simple words, gentle vocabulary, straightforward instructions, and honest guidance)."
             )
 
+            # Build the full LLM message list: system prompt + conversation history
+            llm_messages = [{"role": "system", "content": system_prompt}]
+            for m in chat_messages:
+                role = m.get("role", "user")
+                content = m.get("content", "")
+                if role in ("user", "assistant") and content:
+                    llm_messages.append({"role": role, "content": content})
+
             openai_payload = {
                 "model": "gabby-model",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
+                "messages": llm_messages,
                 "temperature": 0.0,
                 "max_tokens": 512,
                 "stream": True # Standard SSE streaming

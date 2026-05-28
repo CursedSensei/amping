@@ -43,7 +43,7 @@ interface GabbyRepository {
     suspend fun getChatResponse(messages: List<Message>, profile: String): Message
     
     // Modern Ktor WebSockets streaming pathway
-    fun streamChatResponse(token: String, modalUrl: String, prompt: String): Flow<ChatStreamChunk>
+    fun streamChatResponse(token: String, modalUrl: String, messages: List<Message>): Flow<ChatStreamChunk>
     
     // Handshake to request credentials / session token
     suspend fun fetchSessionToken(
@@ -296,7 +296,7 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
         }
     }
 
-    override fun streamChatResponse(token: String, modalUrl: String, prompt: String): Flow<ChatStreamChunk> = flow {
+    override fun streamChatResponse(token: String, modalUrl: String, messages: List<Message>): Flow<ChatStreamChunk> = flow {
         val wsUrl = when {
             modalUrl.startsWith("http") -> modalUrl.replace("http", "ws") + "/chat"
             !modalUrl.startsWith("ws") -> "wss://$modalUrl/chat"
@@ -306,19 +306,23 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
         try {
             // Initiate Ktor WebSocket Session
             val session = httpClient.webSocketSession(urlString = wsUrl)
-            
+
             // 1. Handshake JWT authentication payload
             val authMsg = jsonParser.encodeToString(
                 kotlinx.serialization.serializer(),
                 mapOf("token" to token)
             )
             session.send(Frame.Text(authMsg))
-            
+
             // WebSocket handshake succeeded! Container is up and warm. Emit connected status to VM
             emit(ChatStreamChunk(type = "connected", content = null))
-            
-            // 2. Transmit prompt to vLLM
-            session.send(Frame.Text(prompt))
+
+            // 2. Transmit conversation history as a JSON array so the LLM has full context.
+            // Only role and content are sent — toolCall is a client-side concern.
+            val messagesJson = jsonParser.encodeToString(
+                messages.map { Message(role = it.role, content = it.content) }
+            )
+            session.send(Frame.Text(messagesJson))
 
             // 3. Receive tokens/done signal
             for (frame in session.incoming) {

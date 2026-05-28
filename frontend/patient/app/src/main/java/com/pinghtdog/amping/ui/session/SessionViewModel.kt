@@ -381,6 +381,9 @@ class SessionViewModel @Inject constructor(
             // Inject temporary streaming bubble with helpful cold start message
             val initialHistory = _uiState.value.chatHistory.toMutableList()
             streamMessageIndex = initialHistory.size
+            // Capture the last 6 messages (including the current user message) BEFORE adding
+            // the placeholder — this is the history slice the LLM will receive as context.
+            val historyToSend = initialHistory.takeLast(6)
             val sleepingMsg = "💤 Gabby is sleeping... (This may take 3-5 minutes, please keep the app open)..."
             initialHistory.add(Message(role = "assistant", content = sleepingMsg))
             _uiState.update {
@@ -394,11 +397,11 @@ class SessionViewModel @Inject constructor(
             var streamingContent = ""
             var isFirstToken = true
 
-            // 2. Stream tokens via Ktor WebSockets
+            // 2. Stream tokens via Ktor WebSockets, passing full conversation history
             gabbyRepository.streamChatResponse(
                 token = sessionInfo.token,
                 modalUrl = sessionInfo.modalUrl,
-                prompt = prompt
+                messages = historyToSend
             ).collect { chunk ->
                 when (chunk.type) {
                     "connected" -> {
