@@ -112,25 +112,33 @@ def create_secure_proxy_app():
         "empathy": (
             "You are currently in Phase 1: Empathetic Check-up.\n"
             "Your goal is to greet the patient warmly, show genuine clinical empathy, and immediately steer them towards their health check-in.\n"
-            "CRITICAL: Do NOT ask open-ended questions like 'How can I assist you in feeling better today?'. "
-            "Instead, steer them directly to log their symptoms. You MUST append a structured tool call strictly in this format at the end of your response to transition:\n"
-            "<tool_call> {\"name\": \"show_symptom_checklist\", \"arguments\": {\"mood\": \"Neutral\"}} </tool_call>\n"
-            "Valid mood values: 'Positive', 'Neutral', 'Negative'."
+            "CRITICAL: Do NOT ask open-ended questions like 'How can I assist you in feeling better today?', and do NOT ask how they are feeling right now.\n"
+            "Instead, steer them directly to log their symptoms. You MUST append a structured tool call strictly in this format at the very end of your response to transition:\n"
+            "<tool_call> {\"name\": \"show_symptom_checklist\"} </tool_call>\n"
+            "EXAMPLE RESPONSE:\n"
+            "I am so glad to hear that you are doing well today. Let us check in on your physical symptoms right now to keep your treatment safe.\n"
+            "<tool_call> {\"name\": \"show_symptom_checklist\"} </tool_call>"
         ),
         "symptoms": (
             "You are currently in Phase 2: Symptom Logging.\n"
-            "Empathetically acknowledge their mood and ask if they are experiencing any medication side effects "
+            "Empathetically greet them and ask if they are experiencing any medication side effects "
             "(such as nausea, vomiting, joint pain, fatigue, or dark urine).\n"
             "CRITICAL: Do NOT ask open-ended questions. Steer the patient directly to choose their side-effects so we can progress to their VDOT filming.\n"
             "Once they respond with their physical status, you MUST generate a structured tool call strictly in this format at the end of your response to transition:\n"
             "<tool_call> {\"name\": \"transition_to_vdot\", \"arguments\": {\"side_effects\": \"nausea\", \"nausea_severity\": \"Mild\"}} </tool_call>\n"
-            "Valid nausea_severity values: 'None', 'Mild', 'Severe'."
+            "Valid nausea_severity values: 'None', 'Mild', 'Severe'.\n"
+            "EXAMPLE RESPONSE:\n"
+            "Thank you for sharing. Please complete the side-effect checklist below so we can keep you safe and proceed to your video check-in.\n"
+            "<tool_call> {\"name\": \"transition_to_vdot\", \"arguments\": {\"side_effects\": \"none\", \"nausea_severity\": \"None\"}} </tool_call>"
         ),
         "vdot": (
             "You are currently in Phase 3: Secure VDOT Filming.\n"
             "Warmly guide the patient to record their daily TB medication intake. Keep instructions brief, motivational, and highly focused.\n"
             "CRITICAL: Do NOT ask open-ended questions. Steer the patient directly to activate their camera stream and complete their ingestion.\n"
             "When they indicate readiness or when you prompt them, you MUST output a structured tool call strictly in this format:\n"
+            "<tool_call> {\"name\": \"trigger_vdot\", \"arguments\": {\"duration_seconds\": 15}} </tool_call>\n"
+            "EXAMPLE RESPONSE:\n"
+            "Excellent. Please hold the pill clearly in the frame, take it, and show me you have swallowed it safely. Press the button below to start filming.\n"
             "<tool_call> {\"name\": \"trigger_vdot\", \"arguments\": {\"duration_seconds\": 15}} </tool_call>"
         )
     }
@@ -243,11 +251,7 @@ def create_secure_proxy_app():
             # If so, stream friendly live status updates directly to the client rather than hanging!
             global is_vllm_ready
             if not is_vllm_ready:
-                print("vLLM daemon still initializing in background. Informing client...")
-                await websocket.send_text(json.dumps({
-                    "type": "token",
-                    "content": "Gabby is warming up (loading GPU model weights)... Please hold on a few seconds.\n\n"
-                }))
+                print("vLLM daemon still initializing in background. Waiting for model to load...")
                 while not is_vllm_ready:
                     await asyncio.sleep(2.0)
 
@@ -263,7 +267,7 @@ def create_secure_proxy_app():
 
             system_prompt += (
                 f"\nCRITICAL STYLE RULES:\n"
-                f"- STRICTLY AVOID USING EMOJIS: Do not use any emojis, icons, emoticons, or decorative symbols under any circumstances. All your replies must contain plain text only.\n"
+                f"- STRICTLY FORBIDDEN TO USE EMOJIS: Do NOT use any emojis, stars (e.g. 🌟), icons, smiley faces, emoticons, or decorative symbols under any circumstances. All your replies must contain plain text only. If you use an emoji, you fail.\n"
                 f"- USE MINIMAL LANGUAGE: Be extremely concise, direct, and brief. Use minimal sentences. Avoid extra explanations or chatty filler text.\n"
                 f"- PROFESSIONAL CHILD-LIKE MANNERISM: Maintain a professional, clinically supportive, and safe tone, but express it with innocent, simple, child-like mannerisms (using simple words, gentle vocabulary, straightforward instructions, and honest guidance)."
             )
@@ -274,7 +278,7 @@ def create_secure_proxy_app():
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
-                "temperature": 0.7,
+                "temperature": 0.0,
                 "max_tokens": 512,
                 "stream": True # Standard SSE streaming
             }
@@ -297,6 +301,7 @@ def create_secure_proxy_app():
                         await websocket.close()
                         return
 
+                    full_response = ""
                     async for line in response.aiter_lines():
                         if not line.strip():
                             continue
@@ -308,6 +313,7 @@ def create_secure_proxy_app():
                                 chunk_json = json.loads(data_str)
                                 text_delta = chunk_json["choices"][0]["delta"].get("content", "")
                                 if text_delta:
+                                    full_response += text_delta
                                     # Yield token chunk as a WebSocket text frame
                                     await websocket.send_text(json.dumps({
                                         "type": "token",
@@ -315,6 +321,21 @@ def create_secure_proxy_app():
                                     }))
                             except Exception:
                                 pass
+
+                    # Programmatic fail-safe check in case the LLM ignored formatting rules
+                    if "<tool_call>" not in full_response:
+                        if current_phase == "empathy":
+                            transition_question = {
+                                "youth": "\nLet us check your body today. Please fill out the symptom checklist below.",
+                                "senior": "\nLet us review your body today, dear friend. Please check any symptoms you are feeling in the checklist card below.",
+                                "adult": "\nLet us now document your physical symptoms. Please fill out the interactive symptom checklist below to log your status."
+                            }.get(profile, "\nLet us now document your physical symptoms. Please fill out the interactive symptom checklist below to log your status.")
+                            
+                            fallback_block = f"{transition_question}\n\n<tool_call> {{\"name\": \"show_symptom_checklist\"}} </tool_call>"
+                            await websocket.send_text(json.dumps({
+                                "type": "token",
+                                "content": fallback_block
+                            }))
 
             # 5. Yield successful completion frame and gracefully close connection
             await websocket.send_text(json.dumps({

@@ -45,7 +45,6 @@ DEFAULT_STATE = {
     "current_day": 0,
     "current_phase": "empathy", # "empathy", "symptoms", "vdot"
     "clinical_notes": {
-        "mood": "Pending",
         "side_effects": "Pending",
         "nausea_severity": "Pending"
     }
@@ -149,7 +148,6 @@ def reset_today():
     state["today_status"] = "pending"
     state["current_phase"] = "empathy"
     state["clinical_notes"] = {
-        "mood": "Pending",
         "side_effects": "Pending",
         "nausea_severity": "Pending"
     }
@@ -206,7 +204,6 @@ def simulate_day(req: SimulationRequest):
         # Reset conversation phase for the next day
         state["current_phase"] = "empathy"
         state["clinical_notes"] = {
-            "mood": "Pending",
             "side_effects": "Pending",
             "nausea_severity": "Pending"
         }
@@ -221,7 +218,6 @@ def simulate_day(req: SimulationRequest):
         # Reset conversation phase for the next day
         state["current_phase"] = "empathy"
         state["clinical_notes"] = {
-            "mood": "Pending",
             "side_effects": "Pending",
             "nausea_severity": "Pending"
         }
@@ -372,17 +368,17 @@ async def chat_endpoint(payload: ChatPayload):
         phase_instructions = (
             "We are currently in Phase 1: Empathetic Check-up.\n"
             "Your goal is to greet the patient warmly, show genuine clinical empathy, and immediately steer them towards their health check-in.\n"
-            "CRITICAL: Do NOT ask open-ended questions like 'How can I assist you in feeling better today?'. "
-            "Instead, ask them specifically how they are feeling today so they select their mood, steering them directly to log their symptoms and complete their daily VDOT dose.\n"
-            "Once they express their emotional state or mood (e.g. they say they say they are fine, happy, down, tired), "
-            "you MUST generate a structured tool call strictly in this format at the end of your response to transition to the next phase:\n"
-            "<tool_call> {\"name\": \"transition_to_symptoms\", \"arguments\": {\"mood\": \"Positive\"}} </tool_call>\n"
-            "Valid mood values: 'Positive', 'Neutral', 'Negative'."
+            "CRITICAL: Do NOT ask open-ended questions like 'How can I assist you in feeling better today?', and do NOT ask how they are feeling right now.\n"
+            "Instead, steer them directly to log their symptoms. You MUST append a structured tool call strictly in this format at the very end of your response to transition:\n"
+            "<tool_call> {\"name\": \"show_symptom_checklist\"} </tool_call>\n"
+            "EXAMPLE RESPONSE:\n"
+            "I am so glad to hear that you are doing well today. Let us check in on your physical symptoms right now to keep your treatment safe.\n"
+            "<tool_call> {\"name\": \"show_symptom_checklist\"} </tool_call>"
         )
     elif current_phase == "symptoms":
         phase_instructions = (
             "We are currently in Phase 2: Symptom Logging.\n"
-            "Empathetically acknowledge their mood (noted previously) and ask if they are experiencing any medication side effects "
+            "Empathetically greet them and ask if they are experiencing any medication side effects "
             "(such as nausea, vomiting, joint pain, fatigue, or dark urine).\n"
             "CRITICAL: Do NOT ask open-ended questions. Steer the patient directly to choose their side-effects so we can progress to their daily VDOT filming.\n"
             "Once they respond with their physical status, you MUST generate a structured tool call strictly in this format at the end of your response to transition:\n"
@@ -411,7 +407,7 @@ async def chat_endpoint(payload: ChatPayload):
             openai_payload = {
                 "model": settings.SERVED_MODEL_NAME,
                 "messages": [{"role": m.role, "content": m.content} for m in messages],
-                "temperature": 0.7,
+                "temperature": 0.0,
                 "max_tokens": 512
             }
             
@@ -420,7 +416,7 @@ async def chat_endpoint(payload: ChatPayload):
                 f"Tailor your vocabulary, level of gamification, and empathy to the active profile: {profile}.\n"
                 f"Active Phase Instructions:\n{phase_instructions}\n"
                 f"CRITICAL STYLE RULES:\n"
-                f"- STRICTLY AVOID USING EMOJIS: Do not use any emojis, icons, emoticons, or decorative symbols under any circumstances. All your replies must contain plain text only.\n"
+                f"- STRICTLY FORBIDDEN TO USE EMOJIS: Do NOT use any emojis, stars (e.g. 🌟), icons, smiley faces, emoticons, or decorative symbols under any circumstances. All your replies must contain plain text only. If you use an emoji, you fail.\n"
                 f"- USE MINIMAL LANGUAGE: Be extremely concise, direct, and brief. Use minimal sentences. Avoid extra explanations or chatty filler text.\n"
                 f"- PROFESSIONAL CHILD-LIKE MANNERISM: Maintain a professional, clinically supportive, and safe tone, but express it with innocent, simple, child-like mannerisms (using simple words, gentle vocabulary, straightforward instructions, and honest guidance)."
             )
@@ -450,19 +446,13 @@ async def chat_endpoint(payload: ChatPayload):
                         # (i.e. their last message is not just a greeting or start message)
                         is_greeting = any(w in last_user_words for w in ["hello", "hi", "hey", "gabby", "yo", "sup", "morning", "afternoon", "evening", "greetings"]) or last_user_message.strip() in ["", "?", "hi!", "hello!"]
                         if not is_greeting:
-                            mood = "Neutral"
-                            if any(w in last_user_message for w in ["sad", "bad", "sick", "tired", "poor", "rough", "down", "fatigue", "nausea", "headache", "vomit"]):
-                                mood = "Negative"
-                            elif any(w in last_user_message for w in ["good", "great", "happy", "fine", "awesome", "perfect", "well", "excellent"]):
-                                mood = "Positive"
-                            
                             # Append the tool call and a steering symptom prompt checklist
                             transition_question = {
                                 "youth": "\nLet us check your body today. Please fill out the symptom checklist below.",
                                 "senior": "\nLet us review your body today, dear friend. Please check any symptoms you are feeling in the checklist card below.",
                                 "adult": "\nLet us now document your physical symptoms. Please fill out the interactive symptom checklist below to log your status."
                             }[profile]
-                            assistant_text += f"\n{transition_question}\n\n<tool_call> {{\"name\": \"show_symptom_checklist\", \"arguments\": {{\"mood\": \"{mood}\"}}}} </tool_call>"
+                            assistant_text += f"\n{transition_question}\n\n<tool_call> {{\"name\": \"show_symptom_checklist\"}} </tool_call>"
                     
                     elif current_phase == "symptoms":
                         is_submission = "submitted" in last_user_message or "reported" in last_user_message or "side effect" in last_user_message or any(w in last_user_message for w in ["nausea", "fatigue", "joint", "urine", "vomit", "none", "no"])
@@ -532,15 +522,12 @@ async def chat_endpoint(payload: ChatPayload):
                             assistant_text = f"{clean_text}\n\n<tool_call> {json.dumps(tool_data)} </tool_call>"
                             
                             state["current_phase"] = "symptoms"
-                            state["clinical_notes"]["mood"] = arguments.get("mood", "Neutral")
+                            if "arguments" in tool_data:
+                                tool_data["arguments"].pop("mood", None)
                             save_state(state)
                             
                         elif tool_name == "show_symptom_checklist" or tool_name == "show_doctor_contact":
                             state["current_phase"] = "symptoms"
-                            if tool_name == "show_doctor_contact":
-                                state["clinical_notes"]["mood"] = "Negative"
-                            else:
-                                state["clinical_notes"]["mood"] = arguments.get("mood", "Neutral")
                             save_state(state)
                             
                         elif tool_name == "transition_to_vdot":
