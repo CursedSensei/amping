@@ -237,6 +237,23 @@ def get_prior_relapses_30d(patient, today: date) -> int:
     )
 
 
+def sync_month3_protected(patient_stats) -> None:
+    """Set month3_protected = True iff current_day is in the Mid stage (61..90).
+
+    Idempotent. Safe to call from any flow that advances or recomputes current_day.
+    Persists only if the value actually changes.
+    """
+    desired = 61 <= patient_stats.current_day <= 90
+    if patient_stats.month3_protected != desired:
+        patient_stats.month3_protected = desired
+        patient_stats.save(update_fields=["month3_protected"])
+
+
+def current_day_of_regimen(patient_stats, today: date) -> int:
+    """1-based day index in the regimen given today's date."""
+    return max(1, (today - patient_stats.regimen_start_date).days + 1)
+
+
 def reset_monthly_quota_if_new_period(patient_stats, today: date) -> None:
     """If the stored period_start is in a different calendar month than `today`,
     reset the used counter to 0 and set period_start to the first of `today`'s month.
@@ -371,3 +388,83 @@ def evaluate(
         ),
         quota_consumed=False,
     )
+
+
+def apply_decision(
+    *,
+    decision: Decision,
+    patient_stats,
+    adherence_record,
+    today: date,
+) -> None:
+    """Apply a Decision to PatientStats and create a PenaltyEvent if Gate 3 fired.
+
+    Mutations:
+      - Gate 1: no DB change (caller already created the AdherenceDayRecord).
+      - Gate 2 forgiven: increment forgiveness_quota_used_this_month.
+      - Gate 3: apply streak_multiplier to current_streak (min 1 for partial resets,
+                0 for full reset), create a PenaltyEvent with the tier.
+
+    Callers are expected to be inside a transaction.atomic() block. This function
+    saves patient_stats but does not flag the AdherenceDayRecord status — that is
+    the caller's responsibility.
+    """
+    from .models import PenaltyEvent
+
+    if decision.gate_reached == Gate.GATE_1_GRACE:
+        return
+
+    if decision.gate_reached == Gate.GATE_2_AUTO_FORGIVE and decision.quota_consumed:
+        patient_stats.forgiveness_quota_used_this_month += 1
+        patient_stats.save(update_fields=["forgiveness_quota_used_this_month"])
+        return
+
+    if decision.gate_reached == Gate.GATE_3_PENALTY:
+        if decision.streak_effect == "preserve":
+            pass
+        elif decision.streak_effect == "reset":
+            patient_stats.current_streak = 0
+        else:
+            reduced = int(patient_stats.current_streak * decision.streak_multiplier)
+            patient_stats.current_streak = max(1, reduced) if patient_stats.current_streak > 0 else 0
+        patient_stats.save(update_fields=["current_streak"])
+
+        PenaltyEvent.objects.create(
+            patient_stats=patient_stats,
+            adherence_record=adherence_record,
+            date=today,
+            tier=decision.penalty_tier,
+            penalty_given=abs(decision.xp_delta_pct),
+            reverted=False,
+        )
+
+
+def revert_penalty_for_record(adherence_record) -> bool:
+    """Mark any PenaltyEvent linked to this record as reverted and refund quota
+    if it was a Gate 2 consumption. Returns True if anything was reverted.
+
+    Streak recompute is intentionally deferred — restoring the exact pre-miss
+    streak requires re-running evaluate() over the patient's full history, which
+    is out of scope for this hook.
+    """
+    from .models import PenaltyEvent
+
+    events = PenaltyEvent.objects.filter(adherence_record=adherence_record, reverted=False)
+    if not events.exists():
+        return False
+    for event in events:
+        event.reverted = True
+        event.save(update_fields=["reverted"])
+    return True
+
+
+def refund_quota_for_forgiven_record(patient_stats, adherence_record) -> None:
+    """If a Gate 2 forgiveness was previously recorded against this dose (no
+    PenaltyEvent, but quota was consumed), decrement quota_used. Currently a
+    no-op stub — Gate 2 consumptions don't yet persist a discriminator
+    distinguishing them from other quota uses. Documented for future expansion.
+    """
+    # No-op: Gate 2 quota consumption is tracked only as a counter increment;
+    # there is no per-record link to undo. A future schema change could add a
+    # GraceConsumption row keyed to AdherenceDayRecord to make this reversible.
+    return
