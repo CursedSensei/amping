@@ -446,13 +446,10 @@ class SessionViewModel @Inject constructor(
                         throw Exception(chunk.message ?: "Modal inference container reported an internal error.")
                     }
                     "done" -> {
-                        // Finished streaming. Parse the final accumulated string for tool-call matches
-                        val finalMessageText = if (streamMessageIndex != -1) {
-                            _uiState.value.chatHistory.getOrNull(streamMessageIndex)?.content ?: streamingContent
-                        } else {
-                            streamingContent
-                        }
-                        val parsedResponse = parseResponse(finalMessageText)
+                        // Always parse from the raw accumulated content — the chat history copy
+                        // has already had <tool_call> tags stripped for display purposes, so
+                        // reading from chatHistory here would silently discard the tool call.
+                        val parsedResponse = parseResponse(streamingContent)
                         handleInferenceResult(parsedResponse)
                     }
                 }

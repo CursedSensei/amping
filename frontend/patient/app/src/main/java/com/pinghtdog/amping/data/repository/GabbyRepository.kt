@@ -392,13 +392,6 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
         val hasVdotTransitioned = messages.any { it.toolCall?.name == "transition_to_vdot" }
 
         if (!hasChecklistLoaded) {
-            var mood = "Neutral"
-            if (listOf("sad", "bad", "sick", "tired", "poor", "rough", "down", "fatigue", "nausea", "headache", "vomit", "dizzy").any { lastUserMessage.contains(it) }) {
-                mood = "Negative"
-            } else if (listOf("good", "great", "happy", "fine", "awesome", "perfect", "well", "excellent", "okay", "ok").any { lastUserMessage.contains(it) }) {
-                mood = "Positive"
-            }
-
             val welcomeText = when (profile) {
                 "youth" -> "Awesome! Let's check in on your body today. Please fill out the symptom checklist below!"
                 "senior" -> "Now, dear, let's review your body today. Please check any symptoms you are feeling in the checklist card below."
@@ -406,12 +399,12 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
             }
 
             val replyText = when (profile) {
-                "youth" -> "Yo! Thanks for checking in. Mood logged as: $mood! $welcomeText"
-                "senior" -> "Thank you, dear. It is wonderful to hear from you. I have noted that you are feeling $mood. $welcomeText"
-                else -> "Greeting received. Emotional status captured: $mood. $welcomeText"
+                "youth" -> "Yo! Thanks for checking in. $welcomeText"
+                "senior" -> "Thank you, dear. It is wonderful to hear from you. $welcomeText"
+                else -> "Greeting received. $welcomeText"
             }
 
-            val assistantText = "$replyText\n\n<tool_call> {\"name\": \"show_symptom_checklist\", \"arguments\": {\"mood\": \"$mood\"}} </tool_call>"
+            val assistantText = "$replyText\n\n<tool_call> {\"name\": \"show_symptom_checklist\"} </tool_call>"
             return parseResponse(assistantText)
 
         } else if (!hasVdotTransitioned) {
