@@ -46,7 +46,11 @@ interface GabbyRepository {
     fun streamChatResponse(token: String, modalUrl: String, prompt: String): Flow<ChatStreamChunk>
     
     // Handshake to request credentials / session token
-    suspend fun fetchSessionToken(userId: String, motivation: String? = null): SessionTokenResponse
+    suspend fun fetchSessionToken(
+        userId: String,
+        motivation: String? = null,
+        currentPhase: String = "empathy"
+    ): SessionTokenResponse
 
     // Upload video bytes to backend
     suspend fun uploadVideo(videoBytes: ByteArray): String
@@ -75,6 +79,13 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
 
     // Lazy initialization of standard Ktor HTTP & WebSockets client
     private val httpClient = HttpClient(OkHttp) {
+        engine {
+            config {
+                connectTimeout(5, java.util.concurrent.TimeUnit.MINUTES)
+                readTimeout(5, java.util.concurrent.TimeUnit.MINUTES)
+                writeTimeout(5, java.util.concurrent.TimeUnit.MINUTES)
+            }
+        }
         install(WebSockets) {
             pingInterval = 20_000
         }
@@ -249,12 +260,20 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
         return text
     }
 
-    override suspend fun fetchSessionToken(userId: String, motivation: String?): SessionTokenResponse {
+    override suspend fun fetchSessionToken(
+        userId: String,
+        motivation: String?,
+        currentPhase: String
+    ): SessionTokenResponse {
         try {
             val responseText = httpClient.post {
                 url("$BASE_URL/api/chat/session/")
                 contentType(ContentType.Application.Json)
-                setBody(mapOf("userId" to userId, "motivation" to motivation))
+                setBody(mapOf(
+                    "userId" to userId,
+                    "motivation" to motivation,
+                    "currentPhase" to currentPhase
+                ))
             }.bodyAsText()
             
             return jsonParser.decodeFromString<SessionTokenResponse>(responseText)
