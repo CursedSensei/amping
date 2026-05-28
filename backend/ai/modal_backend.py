@@ -113,9 +113,8 @@ def create_secure_proxy_app():
             "You are currently in Phase 1: Empathetic Check-up.\n"
             "Your goal is to greet the patient warmly, show genuine clinical empathy, and immediately steer them towards their health check-in.\n"
             "CRITICAL: Do NOT ask open-ended questions like 'How can I assist you in feeling better today?'. "
-            "Instead, ask them specifically how they are feeling today so they select their mood, steering them directly to log their symptoms.\n"
-            "Once they express their emotional state or mood (e.g. fine, sad, tired), you MUST append a structured tool call strictly in this format at the end of your response to transition:\n"
-            "<tool_call> {\"name\": \"show_symptom_checklist\", \"arguments\": {\"mood\": \"Positive\"}} </tool_call>\n"
+            "Instead, steer them directly to log their symptoms. You MUST append a structured tool call strictly in this format at the end of your response to transition:\n"
+            "<tool_call> {\"name\": \"show_symptom_checklist\", \"arguments\": {\"mood\": \"Neutral\"}} </tool_call>\n"
             "Valid mood values: 'Positive', 'Neutral', 'Negative'."
         ),
         "symptoms": (
