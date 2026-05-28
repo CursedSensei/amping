@@ -1,20 +1,31 @@
 package com.pinghtdog.amping.data.repository
 
+import android.content.Context
 import com.pinghtdog.amping.data.model.Message
 import com.pinghtdog.amping.data.model.ToolCall
 import com.pinghtdog.amping.data.model.SessionTokenResponse
 import com.pinghtdog.amping.data.model.ChatStreamChunk
+import com.pinghtdog.amping.api_schemas.*
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocketSession
+import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.request.url
+import io.ktor.client.request.header
+import io.ktor.client.request.forms.submitFormWithBinaryData
+import io.ktor.client.request.forms.formData
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
+import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
@@ -32,22 +43,49 @@ interface GabbyRepository {
     suspend fun getChatResponse(messages: List<Message>, profile: String): Message
     
     // Modern Ktor WebSockets streaming pathway
-    fun streamChatResponse(token: String, modalUrl: String, prompt: String): Flow<ChatStreamChunk>
+    fun streamChatResponse(token: String, modalUrl: String, messages: List<Message>): Flow<ChatStreamChunk>
     
     // Handshake to request credentials / session token
-    suspend fun fetchSessionToken(userId: String, motivation: String? = null): SessionTokenResponse
+    suspend fun fetchSessionToken(
+        userId: String,
+        motivation: String? = null,
+        currentPhase: String = "empathy"
+    ): SessionTokenResponse
 
     // Upload video bytes to backend
     suspend fun uploadVideo(videoBytes: ByteArray): String
+
+    // --- PRODUCTION MOBILE API ENDPOINTS ---
+    suspend fun refreshAccessToken(context: Context): String
+    suspend fun getPatientProfile(context: Context): MobilePatientProfileResponse
+    suspend fun getHealthcareProfile(context: Context): MobileHealthCareProviderProfileResponse
+    suspend fun getStats(context: Context): MobileStatsResponse
+    suspend fun getWeeklyAdherence(context: Context): MobileWeeklyAdherenceResponse
+    suspend fun uploadSymptoms(context: Context, date: String, symptoms: List<String>): MobileUploadSymtomsResponse
+    suspend fun getAdherenceVideoEndpoint(context: Context): MobileGetAdherenceVideoEndpointResponse
+    suspend fun uploadVideoToProduction(context: Context, videoBytes: ByteArray): String
 }
 
 @Singleton
 class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
 
+    companion object {
+        // Toggle between Render production and local development server running on host port 8000
+        private const val BASE_URL = "http://10.0.2.2:8000"
+        // private const val BASE_URL = "https://amping.onrender.com"
+    }
+
     private val jsonParser = Json { ignoreUnknownKeys = true }
 
     // Lazy initialization of standard Ktor HTTP & WebSockets client
     private val httpClient = HttpClient(OkHttp) {
+        engine {
+            config {
+                connectTimeout(5, java.util.concurrent.TimeUnit.MINUTES)
+                readTimeout(5, java.util.concurrent.TimeUnit.MINUTES)
+                writeTimeout(5, java.util.concurrent.TimeUnit.MINUTES)
+            }
+        }
         install(WebSockets) {
             pingInterval = 20_000
         }
@@ -56,22 +94,195 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
         }
     }
 
-    override suspend fun fetchSessionToken(userId: String, motivation: String?): SessionTokenResponse {
+    private suspend fun getValidAccessToken(context: Context): String {
+        val cached = TokenManager.getAccessToken(context)
+        if (cached != null) return cached
+        return refreshAccessToken(context)
+    }
+
+    private suspend inline fun <reified T> executeAuthenticatedRequest(
+        context: Context,
+        crossinline block: suspend HttpClient.(accessToken: String) -> HttpResponse
+    ): T {
+        var token = getValidAccessToken(context)
+        var response = try {
+            httpClient.block(token)
+        } catch (e: ClientRequestException) {
+            if (e.response.status.value == 401) {
+                // Token might be expired, refresh it and retry
+                token = refreshAccessToken(context)
+                httpClient.block(token)
+            } else {
+                throw e
+            }
+        }
+        
+        if (response.status.value == 401) {
+            token = refreshAccessToken(context)
+            response = httpClient.block(token)
+        }
+        
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            throw IOException("API Error (${response.status.value}): $text")
+        }
+        
+        return jsonParser.decodeFromString(text)
+    }
+
+    override suspend fun refreshAccessToken(context: Context): String {
+        val refreshToken = TokenManager.getRefreshToken(context)
+            ?: throw IOException("No refresh token stored on this device. Please seed refresh_token.txt.")
+        
         try {
-            // Emulates connecting to the webserver auth gateway.
-            // Uses standard local emulator/development address.
             val responseText = httpClient.post {
-                url("http://10.0.2.2:3000/api/chat/session")
+                url("$BASE_URL/api/v1/mobile/refresh-token/")
                 contentType(ContentType.Application.Json)
-                setBody(mapOf("userId" to userId, "motivation" to motivation))
+                setBody(MobileRefreshTokenPayload(refreshToken))
+            }.bodyAsText()
+            
+            val payload = jsonParser.decodeFromString<MobileRefreshTokenResponse>(responseText)
+            TokenManager.saveAccessToken(context, payload.accessToken)
+            return payload.accessToken
+        } catch (e: Exception) {
+            throw IOException("Token rotation failed: Failed to exchange refresh token for an access token with backend. (${e.localizedMessage ?: "Network error"})", e)
+        }
+    }
+
+    override suspend fun getPatientProfile(context: Context): MobilePatientProfileResponse {
+        return executeAuthenticatedRequest(context) { token ->
+            get("$BASE_URL/api/v1/mobile/profile/") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+        }
+    }
+
+    override suspend fun getHealthcareProfile(context: Context): MobileHealthCareProviderProfileResponse {
+        return executeAuthenticatedRequest(context) { token ->
+            get("$BASE_URL/api/v1/mobile/healthcare-profile/") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+        }
+    }
+
+    override suspend fun getStats(context: Context): MobileStatsResponse {
+        return executeAuthenticatedRequest(context) { token ->
+            get("$BASE_URL/api/v1/mobile/stats/") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+        }
+    }
+
+    override suspend fun getWeeklyAdherence(context: Context): MobileWeeklyAdherenceResponse {
+        return executeAuthenticatedRequest(context) { token ->
+            get("$BASE_URL/api/v1/mobile/weekly_adherence/") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+        }
+    }
+
+    override suspend fun uploadSymptoms(context: Context, date: String, symptoms: List<String>): MobileUploadSymtomsResponse {
+        return executeAuthenticatedRequest(context) { token ->
+            post("$BASE_URL/api/v1/mobile/upload_symptoms/") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+                contentType(ContentType.Application.Json)
+                setBody(MobileUploadSymtomsPayload(date = date, symptoms = symptoms))
+            }
+        }
+    }
+
+    override suspend fun getAdherenceVideoEndpoint(context: Context): MobileGetAdherenceVideoEndpointResponse {
+        return executeAuthenticatedRequest(context) { token ->
+            get("$BASE_URL/api/v1/mobile/adherence_video_endpoint/") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+        }
+    }
+
+    override suspend fun uploadVideoToProduction(context: Context, videoBytes: ByteArray): String {
+        // 1. Handshake to retrieve signed upload video endpoint URL
+        val endpointResponse = getAdherenceVideoEndpoint(context)
+        val videoEndpoint = endpointResponse.videoEndpoint
+
+        // 2. Perform multipart form binary stream upload to this resolved production endpoint
+        var token = getValidAccessToken(context)
+        var response = try {
+            httpClient.submitFormWithBinaryData(
+                url = videoEndpoint,
+                formData = formData {
+                    append("video", videoBytes, Headers.build {
+                        append(HttpHeaders.ContentType, "video/mp4")
+                        append(HttpHeaders.ContentDisposition, "filename=\"vdot.mp4\"")
+                    })
+                }
+            ) {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+        } catch (e: ClientRequestException) {
+            if (e.response.status.value == 401) {
+                token = refreshAccessToken(context)
+                httpClient.submitFormWithBinaryData(
+                    url = videoEndpoint,
+                    formData = formData {
+                        append("video", videoBytes, Headers.build {
+                            append(HttpHeaders.ContentType, "video/mp4")
+                            append(HttpHeaders.ContentDisposition, "filename=\"vdot.mp4\"")
+                        })
+                    }
+                ) {
+                    header(HttpHeaders.Authorization, "Bearer $token")
+                }
+            } else {
+                throw e
+            }
+        }
+
+        if (response.status.value == 401) {
+            token = refreshAccessToken(context)
+            response = httpClient.submitFormWithBinaryData(
+                url = videoEndpoint,
+                formData = formData {
+                    append("video", videoBytes, Headers.build {
+                        append(HttpHeaders.ContentType, "video/mp4")
+                        append(HttpHeaders.ContentDisposition, "filename=\"vdot.mp4\"")
+                    })
+                }
+            ) {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+        }
+
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            throw IOException("Failed to upload production video: (${response.status.value}) $text")
+        }
+
+        return text
+    }
+
+    override suspend fun fetchSessionToken(
+        userId: String,
+        motivation: String?,
+        currentPhase: String
+    ): SessionTokenResponse {
+        try {
+            val responseText = httpClient.post {
+                url("$BASE_URL/api/chat/session/")
+                contentType(ContentType.Application.Json)
+                setBody(mapOf(
+                    "userId" to userId,
+                    "motivation" to motivation,
+                    "currentPhase" to currentPhase
+                ))
             }.bodyAsText()
             
             return jsonParser.decodeFromString<SessionTokenResponse>(responseText)
         } catch (e: Exception) {
-            throw IOException("Network error: Failed to connect to server gateway. Please ensure your webserver is running locally. (${e.localizedMessage ?: "Connection refused"})", e)
+            throw IOException("Network error: Failed to connect to server gateway at https://amping.onrender.com. (${e.localizedMessage ?: "Connection refused"})", e)
         }
     }
 
+    // Keep legacy support for uploadVideo byte streaming (local emulator fallback)
     override suspend fun uploadVideo(videoBytes: ByteArray): String {
         try {
             val responseText = httpClient.post {
@@ -81,11 +292,11 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
             }.bodyAsText()
             return responseText
         } catch (e: Exception) {
-            throw IOException("Failed to upload VDOT video to server: ${e.localizedMessage}", e)
+            throw IOException("Failed to upload VDOT video to local server: ${e.localizedMessage}", e)
         }
     }
 
-    override fun streamChatResponse(token: String, modalUrl: String, prompt: String): Flow<ChatStreamChunk> = flow {
+    override fun streamChatResponse(token: String, modalUrl: String, messages: List<Message>): Flow<ChatStreamChunk> = flow {
         val wsUrl = when {
             modalUrl.startsWith("http") -> modalUrl.replace("http", "ws") + "/chat"
             !modalUrl.startsWith("ws") -> "wss://$modalUrl/chat"
@@ -95,16 +306,23 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
         try {
             // Initiate Ktor WebSocket Session
             val session = httpClient.webSocketSession(urlString = wsUrl)
-            
+
             // 1. Handshake JWT authentication payload
             val authMsg = jsonParser.encodeToString(
                 kotlinx.serialization.serializer(),
                 mapOf("token" to token)
             )
             session.send(Frame.Text(authMsg))
-            
-            // 2. Transmit prompt to vLLM
-            session.send(Frame.Text(prompt))
+
+            // WebSocket handshake succeeded! Container is up and warm. Emit connected status to VM
+            emit(ChatStreamChunk(type = "connected", content = null))
+
+            // 2. Transmit conversation history as a JSON array so the LLM has full context.
+            // Only role and content are sent — toolCall is a client-side concern.
+            val messagesJson = jsonParser.encodeToString(
+                messages.map { Message(role = it.role, content = it.content) }
+            )
+            session.send(Frame.Text(messagesJson))
 
             // 3. Receive tokens/done signal
             for (frame in session.incoming) {
@@ -132,14 +350,34 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
 
         val isUploadComplete = lastUserMessage.contains("vdot upload complete") || lastUserMessage.contains("upload complete")
         if (isUploadComplete) {
-            val motivationStr = if (lastUserMessage.contains("motivation:")) {
-                messages.lastOrNull { it.role == "user" }?.content?.substringAfter("Motivation:")?.trim() ?: ""
-            } else ""
-            val motivationText = if (motivationStr.isNotEmpty()) " because of '$motivationStr'" else ""
-            val transitionText = when (profile) {
-                "youth" -> "Awesome job, champion! You successfully completed today's ingestion and uploaded the VDOT video. Remember the reason why you are taking this medication$motivationText! Keep that streak alive!"
-                "senior" -> "Splendid work, Lola. You have successfully completed your daily medication check-in and video upload. Remember the reason why you are taking this medication$motivationText. Your health is so precious, dear."
-                else -> "Ingestion verification video uploaded successfully. Remember the reason why you are taking this medication$motivationText. Compliance log updated."
+            // Extract motivation from the upload prompt if present
+            val motivation = messages.lastOrNull { it.role == "user" }
+                ?.content?.substringAfter("Motivation:", "")?.trim() ?: ""
+
+            // Check conversation history for any emotional disclosure in Phase 1
+            val emotionalKeywords = listOf("sad", "depress", "anxious", "worried", "scared",
+                "lonely", "stressed", "upset", "grief", "died", "lost", "miss", "struggling")
+            val emotionalMessage = messages
+                .filter { it.role == "user" }
+                .firstOrNull { msg -> emotionalKeywords.any { kw -> msg.content.lowercase().contains(kw) } }
+                ?.content
+
+            val transitionText = when {
+                emotionalMessage != null -> when (profile) {
+                    "youth" -> "Even on a tough day, you showed up and got it done. That takes real strength. Check-in complete — keep that streak going!"
+                    "senior" -> "Even carrying what you are carrying today, you completed your check-in, dear. That matters more than you know."
+                    else -> "Despite what you are carrying today, you completed your check-in. That is what matters. Well done."
+                }
+                motivation.isNotEmpty() -> when (profile) {
+                    "youth" -> "Check-in complete, champion! You are doing this for a reason — and you are proving every day that you can follow through. Keep it up!"
+                    "senior" -> "Splendid work, dear. You have completed your check-in for today. Every day you do this, you are honoring what matters most to you."
+                    else -> "Check-in complete. You are one day closer to where you want to be. Compliance log updated."
+                }
+                else -> when (profile) {
+                    "youth" -> "Awesome job! You completed today's check-in and uploaded your VDOT video. Keep that streak alive!"
+                    "senior" -> "Splendid work, dear. You have completed your daily medication check-in. Your health is so precious."
+                    else -> "Ingestion verification video uploaded successfully. Daily compliance log updated."
+                }
             }
             val assistantText = "$transitionText\n\n<tool_call> {\"name\": \"transition_to_success\"} </tool_call>"
             return parseResponse(assistantText)
@@ -178,13 +416,6 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
         val hasVdotTransitioned = messages.any { it.toolCall?.name == "transition_to_vdot" }
 
         if (!hasChecklistLoaded) {
-            var mood = "Neutral"
-            if (listOf("sad", "bad", "sick", "tired", "poor", "rough", "down", "fatigue", "nausea", "headache", "vomit", "dizzy").any { lastUserMessage.contains(it) }) {
-                mood = "Negative"
-            } else if (listOf("good", "great", "happy", "fine", "awesome", "perfect", "well", "excellent", "okay", "ok").any { lastUserMessage.contains(it) }) {
-                mood = "Positive"
-            }
-
             val welcomeText = when (profile) {
                 "youth" -> "Awesome! Let's check in on your body today. Please fill out the symptom checklist below!"
                 "senior" -> "Now, dear, let's review your body today. Please check any symptoms you are feeling in the checklist card below."
@@ -192,12 +423,12 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
             }
 
             val replyText = when (profile) {
-                "youth" -> "Yo! Thanks for checking in. Mood logged as: $mood! $welcomeText"
-                "senior" -> "Thank you, dear. It is wonderful to hear from you. I have noted that you are feeling $mood. $welcomeText"
-                else -> "Greeting received. Emotional status captured: $mood. $welcomeText"
+                "youth" -> "Yo! Thanks for checking in. $welcomeText"
+                "senior" -> "Thank you, dear. It is wonderful to hear from you. $welcomeText"
+                else -> "Greeting received. $welcomeText"
             }
 
-            val assistantText = "$replyText\n\n<tool_call> {\"name\": \"show_symptom_checklist\", \"arguments\": {\"mood\": \"$mood\"}} </tool_call>"
+            val assistantText = "$replyText\n\n<tool_call> {\"name\": \"show_symptom_checklist\"} </tool_call>"
             return parseResponse(assistantText)
 
         } else if (!hasVdotTransitioned) {

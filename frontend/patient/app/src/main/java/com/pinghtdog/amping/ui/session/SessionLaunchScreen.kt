@@ -35,6 +35,8 @@ import android.content.pm.PackageManager
 import android.widget.Toast
 import com.pinghtdog.amping.data.model.Message
 import com.pinghtdog.amping.ui.theme.*
+import com.pinghtdog.amping.ui.components.AnimatedGabby
+import com.pinghtdog.amping.ui.components.GabbyState
 import kotlinx.coroutines.launch
 
 @Composable
@@ -71,8 +73,8 @@ fun SessionLaunchScreen(
     // Profile dependent theme styling
     val (primaryColor, gradientColors) = when (uiState.activeProfile) {
         "youth" -> Pair(
-            Color(0xFFFF2B88), // Vibrantly Playful Pink/Magenta
-            listOf(Color(0xFFFF2B88), Color(0xFF9C27B0))
+            Color(0xFF0EA5E9), // Gorgeous Sky Blue
+            listOf(Color(0xFF0EA5E9), Color(0xFF0284C7))
         )
         "senior" -> Pair(
             Color(0xFFFF9800), // Warm & Clear Amber/Orange
@@ -205,7 +207,7 @@ fun SessionLaunchScreen(
                         .graphicsLayer(scaleX = scale2, scaleY = scale2, alpha = alpha2)
                         .background(
                             brush = Brush.radialGradient(
-                                colors = listOf(glowingColor.copy(alpha = 0.5f), Color.Transparent)
+                                colors = listOf(glowingColor.copy(alpha = 0.8f), Color.Transparent)
                             ),
                             shape = CircleShape
                         )
@@ -218,7 +220,7 @@ fun SessionLaunchScreen(
                         .graphicsLayer(scaleX = scale1, scaleY = scale1, alpha = alpha1)
                         .background(
                             brush = Brush.radialGradient(
-                                colors = listOf(glowingColor.copy(alpha = 0.6f), Color.Transparent)
+                                colors = listOf(glowingColor.copy(alpha = 0.9f), Color.Transparent)
                             ),
                             shape = CircleShape
                         )
@@ -228,25 +230,39 @@ fun SessionLaunchScreen(
                 Box(
                     modifier = Modifier
                         .size(140.dp)
-                        .background(
-                            brush = Brush.linearGradient(
-                                colors = if (uiState.isListening) listOf(RedPenalty, Color(0xFF991B1B)) else gradientColors
-                            ),
-                            shape = CircleShape
-                        )
-                        .border(
-                            width = 3.dp,
-                            color = Color.White,
-                            shape = CircleShape
+                        .then(
+                            if (uiState.isListening) {
+                                Modifier
+                                    .background(
+                                        brush = Brush.linearGradient(
+                                            listOf(RedPenalty, Color(0xFF991B1B))
+                                        ),
+                                        shape = CircleShape
+                                    )
+                                    .border(
+                                        width = 3.dp,
+                                        color = Color.White,
+                                        shape = CircleShape
+                                    )
+                            } else {
+                                Modifier
+                            }
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = if (uiState.isListening) Icons.Filled.Mic else Icons.Filled.Face,
-                        contentDescription = "Gabby Speaker",
-                        tint = Color.White,
-                        modifier = Modifier.size(68.dp)
-                    )
+                    if (uiState.isListening) {
+                        Icon(
+                            imageVector = Icons.Filled.Mic,
+                            contentDescription = "Gabby Speaker",
+                            tint = Color.White,
+                            modifier = Modifier.size(68.dp)
+                        )
+                    } else {
+                        AnimatedGabby(
+                            state = if (uiState.isTtsSpeaking) GabbyState.SPEAKING else GabbyState.IDLE,
+                            modifier = Modifier.size(130.dp)
+                        )
+                    }
                 }
             }
 
