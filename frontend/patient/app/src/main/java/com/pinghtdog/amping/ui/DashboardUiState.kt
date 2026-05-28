@@ -2,6 +2,8 @@ package com.pinghtdog.amping.ui
 
 data class DashboardUiState(
     val firstname: String = "Leo",
+    val profileType: ProfileType = ProfileType.KIDS,
+    val isTodayTaken: Boolean = false,
     val currentStreak: Int = 4,
     val bestStreak: Int = 14,
     val heartQuota: Int = 3,

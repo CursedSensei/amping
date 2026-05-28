@@ -111,6 +111,35 @@ fun DashBoard(
                 }
             }
 
+            // Debug Profile Selector
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(DarkNavy.copy(alpha = 0.9f))
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ProfileType.values().forEach { type ->
+                    val isActive = uiState.profileType == type
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isActive) CyanPrimary else Color.White.copy(alpha = 0.1f))
+                            .clickable { viewModel.selectProfile(type) }
+                            .padding(vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = type.name,
+                            color = if (isActive) DarkNavy else Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
             // Loading / Error Banners
             if (uiState.isLoading) {
                 Box(
@@ -178,50 +207,105 @@ fun DashBoard(
                 }
             }
 
-            // --- GABBY ROOM AREA ---
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                // Background layer
-                PetBackground(modifier = Modifier.matchParentSize())
-                
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Spacer(modifier = Modifier.height(64.dp))
+            // --- PROFILE SPECIFIC CONTENT ---
+            when (uiState.profileType) {
+                ProfileType.KIDS -> {
+                    // --- GABBY ROOM AREA ---
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Background layer
+                        PetBackground(modifier = Modifier.matchParentSize())
+                        
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Spacer(modifier = Modifier.height(64.dp))
 
-                    // Central Gabby - Like Pou
-                    AnimatedGabby(
-                        state = gabbyState,
-                        modifier = Modifier
-                            .size(320.dp)
-                            .clickable { 
-                                gabbyState = if (gabbyState == GabbyState.IDLE) GabbyState.SPEAKING else GabbyState.IDLE
-                            }
+                            // Central Gabby - Like Pou
+                            AnimatedGabby(
+                                state = gabbyState,
+                                modifier = Modifier
+                                    .size(320.dp)
+                                    .clickable { 
+                                        gabbyState = if (gabbyState == GabbyState.IDLE) GabbyState.SPEAKING else GabbyState.IDLE
+                                    }
+                            )
+
+                            Spacer(modifier = Modifier.height(300.dp))
+                        }
+                    }
+                    // --- END GABBY ROOM AREA ---
+
+                    // Section Header for Stats
+                    Text(
+                        text = "YOUR PROGRESS",
+                        color = TextMuted,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 2.sp,
+                        modifier = Modifier.padding(bottom = 16.dp)
                     )
 
-                    Spacer(modifier = Modifier.height(300.dp))
+                    // Streak Widget
+                    StreakCircularWidget(
+                        streak = uiState.currentStreak,
+                        bestStreak = uiState.bestStreak
+                    )
+                }
+                ProfileType.ADULTS -> {
+                    Spacer(modifier = Modifier.height(32.dp))
+                    // Section Header for Stats
+                    Text(
+                        text = "YOUR PROGRESS",
+                        color = TextMuted,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 2.sp,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    // Streak Widget
+                    StreakCircularWidget(
+                        streak = uiState.currentStreak,
+                        bestStreak = uiState.bestStreak
+                    )
+                }
+                ProfileType.SENIORS -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(48.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "TODAY'S STATUS:",
+                            color = TextMuted,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (uiState.isTodayTaken) Color(0xFFE8F5E9) else Color(0xFFFFEBEE)
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.clickable { viewModel.toggleTodayTaken() }
+                        ) {
+                            Text(
+                                text = if (uiState.isTodayTaken) "TAKEN" else "NOT YET TAKEN",
+                                color = if (uiState.isTodayTaken) Color(0xFF2E7D32) else RedPenalty,
+                                fontSize = 48.sp,
+                                fontWeight = FontWeight.Black,
+                                modifier = Modifier.padding(horizontal = 32.dp, vertical = 24.dp)
+                            )
+                        }
+                    }
                 }
             }
-            // --- END GABBY ROOM AREA ---
-
-            // Section Header for Stats
-            Text(
-                text = "YOUR PROGRESS",
-                color = TextMuted,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 2.sp,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
-
-            // Streak Widget
-            StreakCircularWidget(
-                streak = uiState.currentStreak,
-                bestStreak = uiState.bestStreak
-            )
+            // --- END PROFILE SPECIFIC CONTENT ---
 
             Spacer(modifier = Modifier.height(24.dp))
 

@@ -30,6 +30,23 @@ class DashboardViewModel @Inject constructor(
         loadDashboardData()
     }
 
+    fun selectProfile(profile: ProfileType) {
+        _uiState.update { 
+            it.copy(
+                profileType = profile,
+                firstname = when(profile) {
+                    ProfileType.KIDS -> "Leo"
+                    ProfileType.ADULTS -> "Arthur"
+                    ProfileType.SENIORS -> "Lola"
+                }
+            )
+        }
+    }
+
+    fun toggleTodayTaken() {
+        _uiState.update { it.copy(isTodayTaken = !it.isTodayTaken) }
+    }
+
     fun toggleNetworkMode(enabled: Boolean) {
         _uiState.update { it.copy(isNetworkMode = enabled) }
         loadDashboardData()
