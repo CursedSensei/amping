@@ -1,7 +1,7 @@
 // To parse the JSON, install kotlin's serialization plugin and do:
 //
-// val json                        = Json { allowStructuredMapKeys = true }
-// val mobileUploadSymtomsResponse = json.parse(MobileUploadSymtomsResponse.serializer(), jsonString)
+// val json                                   = Json { allowStructuredMapKeys = true }
+// val mobileGetAdherenceVideoEndpointPayload = json.parse(MobileGetAdherenceVideoEndpointPayload.serializer(), jsonString)
 
 package com.pinghtdog.amping.api_schemas
 
@@ -11,9 +11,7 @@ import kotlinx.serialization.descriptors.*
 import kotlinx.serialization.encoding.*
 
 @Serializable
-data class MobileUploadSymtomsResponse (
+data class MobileGetAdherenceVideoEndpointPayload (
     @SerialName("adherence_day_id")
-    val adherenceDayID: Long,
-
-    val message: String
+    val adherenceDayID: Long? = null
 )

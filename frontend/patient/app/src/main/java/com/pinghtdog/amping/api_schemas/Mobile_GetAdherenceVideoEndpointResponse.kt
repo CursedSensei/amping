@@ -12,9 +12,6 @@ import kotlinx.serialization.encoding.*
 
 @Serializable
 data class MobileGetAdherenceVideoEndpointResponse (
-    @SerialName("adherence_day_id")
-    val adherenceDayID: Long,
-
     @SerialName("video_endpoint")
     val videoEndpoint: String
 )
