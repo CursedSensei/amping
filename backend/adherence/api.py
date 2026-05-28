@@ -9,6 +9,7 @@ from ninja.files import UploadedFile
 from ninja.errors import HttpError
 
 from Amping.utils import create_routers
+from adherence.utils import create_signed_url, get_public_video_url, verify_video_upload
 from users.utils import getPatientUserByToken
 from gamification.models import PatientStats
 from gamification import utils as gamification_utils
@@ -36,7 +37,7 @@ def get_adherence_month(request: HttpRequest, patient_id: int, filter: Query[Web
                 date=record.date,
                 status=record.status,
                 symptoms=[symptom.symptom for symptom in SymptomRecord.objects.filter(adherence_record=record)],
-                video_link=record.video_url
+                video_link= get_public_video_url(patient_id, record.id) if record.video_url else None
             )
             for record in adherence_days
         ]
@@ -138,11 +139,11 @@ def get_adherence_video_endpoint(request: HttpRequest, payload: Mobile_GetAdhere
     if record.status != AdherenceStatusEnum.TECHNICAL_MISS:
         raise HttpError(400, "Not allowed to upload to this adherence day record")
 
-    # Build absolute URI dynamically to support both local and production environments
-    base_uri = request.build_absolute_uri('/').rstrip('/')
+    url = create_signed_url(video_key=f"patient_{patient.id}-adherence_{record.id}.mp4")
+
     return Mobile_GetAdherenceVideoEndpointResponse(
         adherence_day_id=record.id,
-        video_endpoint=f"{base_uri}/api/v1/mobile/upload_video/{record.id}/"
+        video_endpoint=url
     )
 
 @mobile_v1_router.post("/adherence_video_status/")
@@ -151,8 +152,13 @@ def adherence_video_status(request: HttpRequest, payload: Mobile_AdherenceVideoS
     record = AdherenceDayRecord.objects.filter(patient=patient, id=payload.adherence_day_id).first()
     if not record:
         raise HttpError(404, "Adherence record not found")
+    elif record.status != AdherenceStatusEnum.TECHNICAL_MISS:
+        raise HttpError(400, "Not allowed to update this adherence day record")
 
     if payload.status == Mobile_AdherenceVideoStatusPayload.AdherenceVideoStatusEnum.SUCCESS:
+        if not verify_video_upload(payload.video_endpoint):
+            return Mobile_AdherenceVideoStatusResponse(message="Unable to verify video upload. Marked as failed.")
+
         record.status = AdherenceStatusEnum.APP_RECORDED
         record.save()
         return Mobile_AdherenceVideoStatusResponse(message="Adherence video status updated successfully")

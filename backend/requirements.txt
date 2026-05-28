@@ -4,3 +4,4 @@ python-dotenv==1.2.2
 django-ninja==1.6.2
 django-cors-headers==4.9.0
 pyjwt==2.10.1
+boto3==1.43.16
