@@ -1,8 +1,8 @@
 package com.pinghtdog.amping.ui
 
-
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,12 +26,15 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.pinghtdog.amping.ui.theme.CyanPrimary
 import com.pinghtdog.amping.ui.theme.DarkNavy
 import com.pinghtdog.amping.ui.theme.LightBackground
@@ -50,9 +54,13 @@ import com.pinghtdog.amping.ui.theme.TextDark
 import com.pinghtdog.amping.ui.theme.TextMuted
 import com.pinghtdog.amping.ui.components.GabbyIdle
 
-
 @Composable
-fun DashBoard(onStartSession: () -> Unit) {
+fun DashBoard(
+    onStartSession: () -> Unit,
+    viewModel: DashboardViewModel = hiltViewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+
     Scaffold(
         bottomBar = { CustomBottomNavigation(onGabbyClick = onStartSession) },
         containerColor = LightBackground
@@ -62,29 +70,64 @@ fun DashBoard(onStartSession: () -> Unit) {
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Profile Switcher Top Bar
+            // Interactive Server Toggle Top Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(DarkNavy)
-                    .padding(vertical = 12.dp),
-                horizontalArrangement = Arrangement.Center,
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Leo (Kid - 12)",
+                    text = "${uiState.firstname} (Patient Profile)",
                     color = CyanPrimary,
-                    fontWeight = FontWeight.Bold,
-                    textDecoration = TextDecoration.Underline,
-                    modifier = Modifier.padding(end = 16.dp)
+                    fontWeight = FontWeight.Bold
                 )
-                Text(
-                    text = "Lola (Senior - 68)",
-                    color = Color.LightGray
-                )
+                
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable { viewModel.toggleNetworkMode(!uiState.isNetworkMode) }
+                ) {
+                    Text(
+                        text = "Connection: ",
+                        color = Color.LightGray,
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = if (uiState.isNetworkMode) "LOCAL SERVER" else "OFFLINE MOCK",
+                        color = if (uiState.isNetworkMode) CyanPrimary else RedPenalty,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    )
+                }
             }
 
+            // Loading / Error Banners
+            if (uiState.isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(2.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = CyanPrimary)
+                }
+            }
 
+            uiState.errorMessage?.let { error ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = RedPenalty.copy(alpha = 0.1f)),
+                    shape = RoundedCornerShape(0.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = error,
+                        color = RedPenalty,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                    )
+                }
+            }
 
             // Hero Header
             Card(
@@ -109,7 +152,7 @@ fun DashBoard(onStartSession: () -> Unit) {
                             letterSpacing = 1.sp
                         )
                         Text(
-                            text = "Hi, Leo!",
+                            text = "Hi, ${uiState.firstname}!",
                             color = TextDark,
                             fontSize = 28.sp,
                             fontWeight = FontWeight.ExtraBold
@@ -134,7 +177,10 @@ fun DashBoard(onStartSession: () -> Unit) {
             )
 
             // Streak Widget
-            StreakCircularWidget()
+            StreakCircularWidget(
+                streak = uiState.currentStreak,
+                bestStreak = uiState.bestStreak
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -175,13 +221,17 @@ fun DashBoard(onStartSession: () -> Unit) {
 }
 
 @Composable
-fun StreakCircularWidget() {
+fun StreakCircularWidget(streak: Int, bestStreak: Int) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(250.dp),
         contentAlignment = Alignment.Center
     ) {
+        val total = if (bestStreak > 0) bestStreak else 1
+        val ratio = streak.toFloat() / total
+        val sweepAngle = (ratio * 360f).coerceIn(0f, 360f)
+
         Canvas(modifier = Modifier.size(200.dp)) {
             // Background Track
             drawArc(
@@ -192,7 +242,7 @@ fun StreakCircularWidget() {
             // Quota Arc (Blue)
             drawArc(
                 color = CyanPrimary,
-                startAngle = -90f, sweepAngle = 220f, useCenter = false,
+                startAngle = -90f, sweepAngle = sweepAngle, useCenter = false,
                 style = Stroke(width = 24.dp.toPx(), cap = StrokeCap.Round)
             )
             // Grace Arc (Red)
@@ -205,7 +255,7 @@ fun StreakCircularWidget() {
 
         // Center Text
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = "4", fontSize = 72.sp, fontWeight = FontWeight.Black, color = TextDark)
+            Text(text = "$streak", fontSize = 72.sp, fontWeight = FontWeight.Black, color = TextDark)
             Card(
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -265,21 +315,5 @@ fun CustomBottomNavigation(onGabbyClick: () -> Unit) {
         ) {
             Icon(Icons.Filled.Face, contentDescription = "Talk to Gabby", tint = Color.White, modifier = Modifier.size(40.dp))
         }
-    }
-}
-
-@Composable
-fun GabbyIdle(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .background(CyanPrimary, CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            Icons.Filled.Face,
-            contentDescription = "Gabby Idle",
-            tint = Color.White,
-            modifier = Modifier.size(80.dp)
-        )
     }
 }
