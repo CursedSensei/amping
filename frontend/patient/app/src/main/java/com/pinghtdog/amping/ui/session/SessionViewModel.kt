@@ -381,7 +381,7 @@ class SessionViewModel @Inject constructor(
             // Inject temporary streaming bubble with helpful cold start message
             val initialHistory = _uiState.value.chatHistory.toMutableList()
             streamMessageIndex = initialHistory.size
-            val sleepingMsg = "💤 Gabby is sleeping... Waking up secure server (this cold start may take 3-5 minutes, please keep the app open)..."
+            val sleepingMsg = "💤 Gabby is sleeping... (This may take 3-5 minutes, please keep the app open)..."
             initialHistory.add(Message(role = "assistant", content = sleepingMsg))
             _uiState.update {
                 it.copy(
