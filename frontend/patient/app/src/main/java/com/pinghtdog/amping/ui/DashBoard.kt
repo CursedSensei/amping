@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.SportsSoccer
 import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
@@ -54,12 +55,23 @@ import com.pinghtdog.amping.ui.theme.TextDark
 import com.pinghtdog.amping.ui.theme.TextMuted
 import com.pinghtdog.amping.ui.components.GabbyIdle
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.pinghtdog.amping.ui.components.AnimatedGabby
+import com.pinghtdog.amping.ui.components.GabbyState
+
 @Composable
 fun DashBoard(
     onStartSession: () -> Unit,
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val scrollState = rememberScrollState()
+    var gabbyState by remember { mutableStateOf(GabbyState.IDLE) }
 
     Scaffold(
         bottomBar = { CustomBottomNavigation(onGabbyClick = onStartSession) },
@@ -69,6 +81,8 @@ fun DashBoard(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .verticalScroll(scrollState),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Interactive Server Toggle Top Bar
             Row(
@@ -170,10 +184,30 @@ fun DashBoard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            // Top push to center Gabby more vertically in the remaining space
+            Spacer(modifier = Modifier.height(150.dp))
 
-            GabbyIdle(
-                modifier = Modifier.size(120.dp)
+            // Central Gabby - Like Pou
+            AnimatedGabby(
+                state = gabbyState,
+                modifier = Modifier
+                    .size(320.dp) // Slightly larger for better focus
+                    .clickable { 
+                        gabbyState = if (gabbyState == GabbyState.IDLE) GabbyState.SPEAKING else GabbyState.IDLE
+                    }
+            )
+
+            // Large spacer to push widgets below the fold
+            Spacer(modifier = Modifier.height(150.dp))
+
+            // Section Header for Stats
+            Text(
+                text = "YOUR PROGRESS",
+                color = TextMuted,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 2.sp,
+                modifier = Modifier.padding(bottom = 16.dp)
             )
 
             // Streak Widget
@@ -216,6 +250,8 @@ fun DashBoard(
                     )
                 }
             }
+            
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
@@ -291,15 +327,19 @@ fun CustomBottomNavigation(onGabbyClick: () -> Unit) {
             elevation = CardDefaults.cardElevation(8.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxSize().padding(horizontal = 32.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { /*TODO*/ }) { Icon(Icons.Outlined.CalendarToday, null, tint = TextMuted) }
-                IconButton(onClick = { /*TODO*/ }) { Icon(Icons.Outlined.TrendingUp, null, tint = TextMuted) }
-                Spacer(modifier = Modifier.width(56.dp)) // Space for FAB
-                IconButton(onClick = { /*TODO*/ }) { Icon(Icons.Outlined.Person, null, tint = TextMuted) }
-                IconButton(onClick = { /*TODO*/ }) { Icon(Icons.Outlined.Settings, null, tint = TextMuted) }
+                IconButton(onClick = { /* Navigate Home */ }) { 
+                    Icon(Icons.Outlined.Home, null, tint = CyanPrimary) 
+                }
+                
+                Spacer(modifier = Modifier.width(72.dp)) // Space for Gabby FAB
+                
+                IconButton(onClick = { /* Navigate Settings */ }) { 
+                    Icon(Icons.Outlined.Settings, null, tint = TextMuted) 
+                }
             }
         }
 
@@ -313,7 +353,9 @@ fun CustomBottomNavigation(onGabbyClick: () -> Unit) {
             shape = CircleShape,
             containerColor = CyanPrimary
         ) {
-            Icon(Icons.Filled.Face, contentDescription = "Talk to Gabby", tint = Color.White, modifier = Modifier.size(40.dp))
+            GabbyIdle(
+                modifier = Modifier.size(120.dp)
+            )
         }
     }
 }
