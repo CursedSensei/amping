@@ -12,9 +12,9 @@ Inputs are parameterized by age category and regimen stage:
 The sex modifier from the original PDF (+2h grace window for female patients across all
 stages and ages) has been intentionally abolished — do NOT reintroduce it.
 
-The orchestrator `evaluate()` returns a `Decision` dataclass; it does not write to the DB.
-Callers (e.g. adherence upload handlers) are responsible for persisting the resulting
-streak/XP/penalty effects and incrementing the quota counter when `quota_consumed=True`.
+The orchestrator `PenaltySystem.evaluate()` returns a `Decision` dataclass; it does not
+write to the DB. Callers (e.g. adherence upload handlers) are responsible for persisting
+the resulting streak/XP/penalty effects via `PenaltySystem.apply_decision()`.
 
 Randomness is seeded by (patient_id, dose_date) by default so re-evaluation of the same
 miss is idempotent.
@@ -97,374 +97,376 @@ TIER_EFFECTS = {
 }
 
 
-def age_category_from_birthyear(birthyear: int, now: datetime) -> AgeCategory:
-    """Derive age bucket from birthyear using `now.year - birthyear`."""
-    age = now.year - birthyear
-    if age <= AGE_THRESHOLDS["child_adolescent_max"]:
-        return AgeCategory.CHILD_ADOLESCENT
-    if age <= AGE_THRESHOLDS["adult_max"]:
-        return AgeCategory.ADULT
-    return AgeCategory.SENIOR
+class PenaltySystem:
+    """Three-gate penalty/forgiveness orchestrator bound to a patient+stats+now."""
 
+    def __init__(
+        self,
+        patient,
+        patient_stats,
+        now: datetime,
+        *,
+        rng: random.Random | None = None,
+    ):
+        self.patient = patient
+        self.patient_stats = patient_stats
+        self.now = now
+        self.today = now.date()
+        self._rng_override = rng
 
-def stage_from_day(current_day: int) -> Stage:
-    """Map 1-based regimen day to Stage. Out-of-range days clamp to nearest stage."""
-    if current_day < 1:
-        return Stage.EARLY
-    if current_day <= 60:
-        return Stage.EARLY
-    if current_day <= 90:
-        return Stage.MID
-    return Stage.ADVANCED
+    # --- stateless helpers ---------------------------------------------------
 
+    @staticmethod
+    def age_category_from_birthyear(birthyear: int, now: datetime) -> AgeCategory:
+        """Derive age bucket from birthyear using `now.year - birthyear`."""
+        age = now.year - birthyear
+        if age <= AGE_THRESHOLDS["child_adolescent_max"]:
+            return AgeCategory.CHILD_ADOLESCENT
+        if age <= AGE_THRESHOLDS["adult_max"]:
+            return AgeCategory.ADULT
+        return AgeCategory.SENIOR
 
-def grace_window_hours(age: AgeCategory, stage: Stage) -> int:
-    return GRACE_WINDOW_HOURS[age][stage]
+    @staticmethod
+    def stage_from_day(current_day: int) -> Stage:
+        """Map 1-based regimen day to Stage. Out-of-range days clamp to nearest stage."""
+        if current_day < 1:
+            return Stage.EARLY
+        if current_day <= 60:
+            return Stage.EARLY
+        if current_day <= 90:
+            return Stage.MID
+        return Stage.ADVANCED
 
+    @staticmethod
+    def grace_window_hours(age: AgeCategory, stage: Stage) -> int:
+        return GRACE_WINDOW_HOURS[age][stage]
 
-def auto_forgive_base_pct(age: AgeCategory, stage: Stage) -> int:
-    return AUTO_FORGIVE_BASE_PCT[age][stage]
+    @staticmethod
+    def auto_forgive_base_pct(age: AgeCategory, stage: Stage) -> int:
+        return AUTO_FORGIVE_BASE_PCT[age][stage]
 
+    @staticmethod
+    def frequency_modifier_pct(miss_count_7d: int) -> int | None:
+        """Return modifier in pct, or None to signal LOCKED (3+ misses)."""
+        if miss_count_7d >= 3:
+            return None
+        return FREQUENCY_MODIFIER.get(miss_count_7d, 0)
 
-def frequency_modifier_pct(miss_count_7d: int) -> int | None:
-    """Return modifier in pct, or None to signal LOCKED (3+ misses)."""
-    if miss_count_7d >= 3:
-        return None
-    return FREQUENCY_MODIFIER.get(miss_count_7d, 0)
-
-
-def recency_modifier_pct(last_relapse_date: date | None, today: date) -> int:
-    if last_relapse_date is None:
+    @staticmethod
+    def recency_modifier_pct(last_relapse_date: date | None, today: date) -> int:
+        if last_relapse_date is None:
+            return 0
+        days_since = (today - last_relapse_date).days
+        if days_since < 0:
+            return 0
+        for max_days, modifier in RECENCY_BUCKETS:
+            if days_since <= max_days:
+                return modifier
         return 0
-    days_since = (today - last_relapse_date).days
-    if days_since < 0:
-        return 0
-    for max_days, modifier in RECENCY_BUCKETS:
-        if days_since <= max_days:
-            return modifier
-    return 0
 
+    @staticmethod
+    def monthly_quota_slots(age: AgeCategory, prior_relapses_30d: int) -> int:
+        if prior_relapses_30d <= 0:
+            key = "0"
+        elif prior_relapses_30d <= 2:
+            key = "1_2"
+        else:
+            key = "3_plus"
+        return MONTHLY_QUOTA[age][key]
 
-def monthly_quota_slots(age: AgeCategory, prior_relapses_30d: int) -> int:
-    if prior_relapses_30d <= 0:
-        key = "0"
-    elif prior_relapses_30d <= 2:
-        key = "1_2"
-    else:
-        key = "3_plus"
-    return MONTHLY_QUOTA[age][key]
+    @staticmethod
+    def penalty_tier_from_miss_count(miss_count_7d: int) -> int:
+        """1st miss -> Tier 1, 2nd -> Tier 2, 3rd -> Tier 3, 4th+ -> Tier 4."""
+        if miss_count_7d <= 1:
+            return 1
+        if miss_count_7d == 2:
+            return 2
+        if miss_count_7d == 3:
+            return 3
+        return 4
 
+    @staticmethod
+    def tier_effects(tier: int) -> dict:
+        return TIER_EFFECTS[tier]
 
-def penalty_tier_from_miss_count(miss_count_7d: int) -> int:
-    """1st miss -> Tier 1, 2nd -> Tier 2, 3rd -> Tier 3, 4th+ -> Tier 4."""
-    if miss_count_7d <= 1:
-        return 1
-    if miss_count_7d == 2:
-        return 2
-    if miss_count_7d == 3:
-        return 3
-    return 4
+    @staticmethod
+    def make_seeded_rng(patient_id: int, dose_date: date) -> random.Random:
+        """RNG seeded by (patient_id, dose_date) so re-evaluation is deterministic."""
+        seed = hash((patient_id, dose_date.isoformat()))
+        return random.Random(seed)
 
+    @staticmethod
+    def _clamp(value: float, lo: float, hi: float) -> float:
+        return max(lo, min(hi, value))
 
-def tier_effects(tier: int) -> dict:
-    return TIER_EFFECTS[tier]
+    # --- patient-scoped queries ---------------------------------------------
 
+    def get_miss_dates_past_7d(self) -> list[date]:
+        """Dose-dates of UNVERIFIED_ABSENCE or TECHNICAL_MISS records in (today-7, today]."""
+        from adherence.models import AdherenceDayRecord, AdherenceStatusEnum
 
-def make_seeded_rng(patient_id: int, dose_date: date) -> random.Random:
-    """RNG seeded by (patient_id, dose_date) so re-evaluation is deterministic."""
-    seed = hash((patient_id, dose_date.isoformat()))
-    return random.Random(seed)
-
-
-def get_miss_dates_past_7d(patient, today: date) -> list[date]:
-    """Dose-dates of UNVERIFIED_ABSENCE or TECHNICAL_MISS records in (today-7, today]."""
-    from adherence.models import AdherenceDayRecord, AdherenceStatusEnum
-
-    start = today - timedelta(days=7)
-    qs = (
-        AdherenceDayRecord.objects
-        .filter(
-            patient=patient,
-            dose_date__gt=start,
-            dose_date__lte=today,
-            status__in=[
-                AdherenceStatusEnum.UNVERIFIED_ABSENCE,
-                AdherenceStatusEnum.TECHNICAL_MISS,
-            ],
+        start = self.today - timedelta(days=7)
+        qs = (
+            AdherenceDayRecord.objects
+            .filter(
+                patient=self.patient,
+                dose_date__gt=start,
+                dose_date__lte=self.today,
+                status__in=[
+                    AdherenceStatusEnum.UNVERIFIED_ABSENCE,
+                    AdherenceStatusEnum.TECHNICAL_MISS,
+                ],
+            )
+            .order_by("dose_date")
+            .values_list("dose_date", flat=True)
         )
-        .order_by("dose_date")
-        .values_list("dose_date", flat=True)
-    )
-    return list(qs)
+        return list(qs)
 
+    def get_last_relapse_date(self) -> date | None:
+        """Most recent UNVERIFIED_ABSENCE dose_date on or before today.
 
-def get_last_relapse_date(patient, today: date) -> date | None:
-    """Most recent UNVERIFIED_ABSENCE dose_date on or before `today`.
+        Technical misses are excluded — they reflect device/network failures, not
+        behavioral relapse, so they should not drive the recency penalty.
+        """
+        from adherence.models import AdherenceDayRecord, AdherenceStatusEnum
 
-    Technical misses are excluded — they reflect device/network failures, not
-    behavioral relapse, so they should not drive the recency penalty.
-    """
-    from adherence.models import AdherenceDayRecord, AdherenceStatusEnum
-
-    record = (
-        AdherenceDayRecord.objects
-        .filter(
-            patient=patient,
-            dose_date__lte=today,
-            status=AdherenceStatusEnum.UNVERIFIED_ABSENCE,
-        )
-        .order_by("-dose_date")
-        .values_list("dose_date", flat=True)
-        .first()
-    )
-    return record
-
-
-def get_prior_relapses_30d(patient, today: date) -> int:
-    """Count of UNVERIFIED_ABSENCE records in (today-30, today]."""
-    from adherence.models import AdherenceDayRecord, AdherenceStatusEnum
-
-    start = today - timedelta(days=30)
-    return (
-        AdherenceDayRecord.objects
-        .filter(
-            patient=patient,
-            dose_date__gt=start,
-            dose_date__lte=today,
-            status=AdherenceStatusEnum.UNVERIFIED_ABSENCE,
-        )
-        .count()
-    )
-
-
-def sync_month3_protected(patient_stats) -> None:
-    """Set month3_protected = True iff current_day is in the Mid stage (61..90).
-
-    Idempotent. Safe to call from any flow that advances or recomputes current_day.
-    Persists only if the value actually changes.
-    """
-    desired = 61 <= patient_stats.current_day <= 90
-    if patient_stats.month3_protected != desired:
-        patient_stats.month3_protected = desired
-        patient_stats.save(update_fields=["month3_protected"])
-
-
-def current_day_of_regimen(patient_stats, today: date) -> int:
-    """1-based day index in the regimen given today's date."""
-    return max(1, (today - patient_stats.regimen_start_date).days + 1)
-
-
-def reset_monthly_quota_if_new_period(patient_stats, today: date) -> None:
-    """If the stored period_start is in a different calendar month than `today`,
-    reset the used counter to 0 and set period_start to the first of `today`'s month.
-    Saves `patient_stats`.
-    """
-    period_start = patient_stats.forgiveness_quota_period_start
-    current_period = date(today.year, today.month, 1)
-    if period_start is None or (period_start.year, period_start.month) != (today.year, today.month):
-        patient_stats.forgiveness_quota_used_this_month = 0
-        patient_stats.forgiveness_quota_period_start = current_period
-        patient_stats.save(update_fields=[
-            "forgiveness_quota_used_this_month",
-            "forgiveness_quota_period_start",
-        ])
-
-
-def _clamp(value: float, lo: float, hi: float) -> float:
-    return max(lo, min(hi, value))
-
-
-def evaluate(
-    *,
-    patient_id: int,
-    birthyear: int,
-    now: datetime,
-    scheduled_dose_time: datetime,
-    dose_date: date,
-    current_day_of_regimen: int,
-    miss_dates_past_7d: list[date],
-    last_relapse_date: date | None,
-    prior_relapses_30d: int,
-    quota_used_this_month: int,
-    rng: random.Random | None = None,
-) -> Decision:
-    """Run Gate 1 → Gate 2 → Gate 3 and return a Decision. No DB writes.
-
-    The current miss is assumed to be already included in `miss_dates_past_7d`,
-    so its length drives both the frequency modifier and the Gate 3 tier.
-    """
-    age = age_category_from_birthyear(birthyear, now)
-    stage = stage_from_day(current_day_of_regimen)
-    today = now.date()
-    if rng is None:
-        rng = make_seeded_rng(patient_id, dose_date)
-
-    # Gate 1 — Grace Window
-    lateness_hours = (now - scheduled_dose_time).total_seconds() / 3600.0
-    window_h = grace_window_hours(age, stage)
-    if 0 <= lateness_hours <= window_h:
-        return Decision(
-            gate_reached=Gate.GATE_1_GRACE,
-            forgiven=True,
-            forgive_probability_pct=100.0,
-            penalty_tier=None,
-            streak_effect="preserve",
-            streak_multiplier=1.0,
-            xp_delta_pct=0,
-            system_action="none",
-            rationale=(
-                f"Gate 1 grace: {lateness_hours:.1f}h late ≤ {window_h}h window "
-                f"(age={age.value}, stage={stage.value})."
-            ),
-            quota_consumed=False,
+        return (
+            AdherenceDayRecord.objects
+            .filter(
+                patient=self.patient,
+                dose_date__lte=self.today,
+                status=AdherenceStatusEnum.UNVERIFIED_ABSENCE,
+            )
+            .order_by("-dose_date")
+            .values_list("dose_date", flat=True)
+            .first()
         )
 
-    # Gate 2 — Auto-Forgive Roll
-    miss_count_7d = len(miss_dates_past_7d)
-    freq_mod = frequency_modifier_pct(miss_count_7d)
-    base = auto_forgive_base_pct(age, stage)
-    recency_mod = recency_modifier_pct(last_relapse_date, today)
-    slots = monthly_quota_slots(age, prior_relapses_30d)
+    def get_prior_relapses_30d(self) -> int:
+        """Count of UNVERIFIED_ABSENCE records in (today-30, today]."""
+        from adherence.models import AdherenceDayRecord, AdherenceStatusEnum
 
-    if freq_mod is None:
-        prob = 0.0
-        prob_explanation = (
-            f"LOCKED (3+ misses in past 7d); base {base} ignored, recency {recency_mod:+d} ignored"
-        )
-    else:
-        prob = _clamp(base + freq_mod + recency_mod, 0.0, 100.0)
-        prob_explanation = (
-            f"base {base} + freq {freq_mod:+d} + recency {recency_mod:+d} = {prob:.0f}%"
+        start = self.today - timedelta(days=30)
+        return (
+            AdherenceDayRecord.objects
+            .filter(
+                patient=self.patient,
+                dose_date__gt=start,
+                dose_date__lte=self.today,
+                status=AdherenceStatusEnum.UNVERIFIED_ABSENCE,
+            )
+            .count()
         )
 
-    quota_available = quota_used_this_month < slots
+    # --- patient_stats maintenance ------------------------------------------
 
-    if quota_available and prob > 0:
-        roll = rng.uniform(0, 100)
-        if roll < prob:
+    def current_day_of_regimen(self) -> int:
+        """1-based day index in the regimen given today's date."""
+        return max(1, (self.today - self.patient_stats.regimen_start_date).days + 1)
+
+    def sync_month3_protected(self) -> None:
+        """Set month3_protected = True iff current_day is in the Mid stage (61..90).
+
+        Idempotent. Persists only if the value actually changes.
+        """
+        ps = self.patient_stats
+        desired = 61 <= ps.current_day <= 90
+        if ps.month3_protected != desired:
+            ps.month3_protected = desired
+            ps.save(update_fields=["month3_protected"])
+
+    def reset_monthly_quota_if_new_period(self) -> None:
+        """If the stored period_start is in a different calendar month than today,
+        reset the used counter to 0 and set period_start to the first of today's month.
+        """
+        ps = self.patient_stats
+        period_start = ps.forgiveness_quota_period_start
+        current_period = date(self.today.year, self.today.month, 1)
+        if period_start is None or (period_start.year, period_start.month) != (self.today.year, self.today.month):
+            ps.forgiveness_quota_used_this_month = 0
+            ps.forgiveness_quota_period_start = current_period
+            ps.save(update_fields=[
+                "forgiveness_quota_used_this_month",
+                "forgiveness_quota_period_start",
+            ])
+
+    # --- orchestration -------------------------------------------------------
+
+    def evaluate(
+        self,
+        *,
+        scheduled_dose_time: datetime,
+        dose_date: date,
+    ) -> Decision:
+        """Run Gate 1 → Gate 2 → Gate 3 and return a Decision. No DB writes.
+
+        The current miss is assumed to already be recorded, so the internal
+        `get_miss_dates_past_7d()` query includes it and drives both the frequency
+        modifier and the Gate 3 tier.
+        """
+        age = self.age_category_from_birthyear(self.patient.birthyear, self.now)
+        stage = self.stage_from_day(self.current_day_of_regimen())
+        rng = self._rng_override or self.make_seeded_rng(self.patient.id, dose_date)
+
+        # Gate 1 — Grace Window
+        lateness_hours = (self.now - scheduled_dose_time).total_seconds() / 3600.0
+        window_h = self.grace_window_hours(age, stage)
+        if 0 <= lateness_hours <= window_h:
             return Decision(
-                gate_reached=Gate.GATE_2_AUTO_FORGIVE,
+                gate_reached=Gate.GATE_1_GRACE,
                 forgiven=True,
-                forgive_probability_pct=prob,
+                forgive_probability_pct=100.0,
                 penalty_tier=None,
                 streak_effect="preserve",
                 streak_multiplier=1.0,
                 xp_delta_pct=0,
                 system_action="none",
                 rationale=(
-                    f"Gate 2 forgiven: rolled {roll:.1f} < probability {prob:.0f}% "
-                    f"({prob_explanation}); quota {quota_used_this_month + 1}/{slots} used."
+                    f"Gate 1 grace: {lateness_hours:.1f}h late ≤ {window_h}h window "
+                    f"(age={age.value}, stage={stage.value})."
                 ),
-                quota_consumed=True,
+                quota_consumed=False,
             )
-        gate2_outcome = (
-            f"rolled {roll:.1f} ≥ probability {prob:.0f}% ({prob_explanation}); "
-            f"quota {quota_used_this_month}/{slots} used"
-        )
-    else:
-        if not quota_available:
+
+        # Gate 2 — Auto-Forgive Roll
+        miss_dates_past_7d = self.get_miss_dates_past_7d()
+        miss_count_7d = len(miss_dates_past_7d)
+        freq_mod = self.frequency_modifier_pct(miss_count_7d)
+        base = self.auto_forgive_base_pct(age, stage)
+        recency_mod = self.recency_modifier_pct(self.get_last_relapse_date(), self.today)
+        slots = self.monthly_quota_slots(age, self.get_prior_relapses_30d())
+        quota_used_this_month = self.patient_stats.forgiveness_quota_used_this_month
+
+        if freq_mod is None:
+            prob = 0.0
+            prob_explanation = (
+                f"LOCKED (3+ misses in past 7d); base {base} ignored, recency {recency_mod:+d} ignored"
+            )
+        else:
+            prob = self._clamp(base + freq_mod + recency_mod, 0.0, 100.0)
+            prob_explanation = (
+                f"base {base} + freq {freq_mod:+d} + recency {recency_mod:+d} = {prob:.0f}%"
+            )
+
+        quota_available = quota_used_this_month < slots
+
+        if quota_available and prob > 0:
+            roll = rng.uniform(0, 100)
+            if roll < prob:
+                return Decision(
+                    gate_reached=Gate.GATE_2_AUTO_FORGIVE,
+                    forgiven=True,
+                    forgive_probability_pct=prob,
+                    penalty_tier=None,
+                    streak_effect="preserve",
+                    streak_multiplier=1.0,
+                    xp_delta_pct=0,
+                    system_action="none",
+                    rationale=(
+                        f"Gate 2 forgiven: rolled {roll:.1f} < probability {prob:.0f}% "
+                        f"({prob_explanation}); quota {quota_used_this_month + 1}/{slots} used."
+                    ),
+                    quota_consumed=True,
+                )
             gate2_outcome = (
-                f"quota exhausted ({quota_used_this_month}/{slots}); skipped roll "
-                f"(probability would have been {prob:.0f}%, {prob_explanation})"
+                f"rolled {roll:.1f} ≥ probability {prob:.0f}% ({prob_explanation}); "
+                f"quota {quota_used_this_month}/{slots} used"
             )
         else:
-            gate2_outcome = f"probability 0% ({prob_explanation}); skipped roll"
+            if not quota_available:
+                gate2_outcome = (
+                    f"quota exhausted ({quota_used_this_month}/{slots}); skipped roll "
+                    f"(probability would have been {prob:.0f}%, {prob_explanation})"
+                )
+            else:
+                gate2_outcome = f"probability 0% ({prob_explanation}); skipped roll"
 
-    # Gate 3 — Penalty Tier
-    tier = penalty_tier_from_miss_count(miss_count_7d)
-    effects = tier_effects(tier)
-    return Decision(
-        gate_reached=Gate.GATE_3_PENALTY,
-        forgiven=False,
-        forgive_probability_pct=prob,
-        penalty_tier=tier,
-        streak_effect=effects["streak_effect"],
-        streak_multiplier=effects["streak_multiplier"],
-        xp_delta_pct=effects["xp_delta_pct"],
-        system_action=effects["action"],
-        rationale=(
-            f"Gate 3 Tier {tier}: {miss_count_7d} miss(es) in past 7d. "
-            f"Gate 2 outcome — {gate2_outcome}."
-        ),
-        quota_consumed=False,
-    )
-
-
-def apply_decision(
-    *,
-    decision: Decision,
-    patient_stats,
-    adherence_record,
-    today: date,
-) -> None:
-    """Apply a Decision to PatientStats and create a PenaltyEvent if Gate 3 fired.
-
-    Mutations:
-      - Gate 1: no DB change (caller already created the AdherenceDayRecord).
-      - Gate 2 forgiven: increment forgiveness_quota_used_this_month.
-      - Gate 3: apply streak_multiplier to current_streak (min 1 for partial resets,
-                0 for full reset), create a PenaltyEvent with the tier.
-
-    Callers are expected to be inside a transaction.atomic() block. This function
-    saves patient_stats but does not flag the AdherenceDayRecord status — that is
-    the caller's responsibility.
-    """
-    from .models import PenaltyEvent
-
-    if decision.gate_reached == Gate.GATE_1_GRACE:
-        return
-
-    if decision.gate_reached == Gate.GATE_2_AUTO_FORGIVE and decision.quota_consumed:
-        patient_stats.forgiveness_quota_used_this_month += 1
-        patient_stats.save(update_fields=["forgiveness_quota_used_this_month"])
-        return
-
-    if decision.gate_reached == Gate.GATE_3_PENALTY:
-        if decision.streak_effect == "preserve":
-            pass
-        elif decision.streak_effect == "reset":
-            patient_stats.current_streak = 0
-        else:
-            reduced = int(patient_stats.current_streak * decision.streak_multiplier)
-            patient_stats.current_streak = max(1, reduced) if patient_stats.current_streak > 0 else 0
-        patient_stats.save(update_fields=["current_streak"])
-
-        PenaltyEvent.objects.create(
-            patient_stats=patient_stats,
-            adherence_record=adherence_record,
-            date=today,
-            tier=decision.penalty_tier,
-            penalty_given=abs(decision.xp_delta_pct),
-            reverted=False,
+        # Gate 3 — Penalty Tier
+        tier = self.penalty_tier_from_miss_count(miss_count_7d)
+        effects = self.tier_effects(tier)
+        return Decision(
+            gate_reached=Gate.GATE_3_PENALTY,
+            forgiven=False,
+            forgive_probability_pct=prob,
+            penalty_tier=tier,
+            streak_effect=effects["streak_effect"],
+            streak_multiplier=effects["streak_multiplier"],
+            xp_delta_pct=effects["xp_delta_pct"],
+            system_action=effects["action"],
+            rationale=(
+                f"Gate 3 Tier {tier}: {miss_count_7d} miss(es) in past 7d. "
+                f"Gate 2 outcome — {gate2_outcome}."
+            ),
+            quota_consumed=False,
         )
 
+    def apply_decision(self, decision: Decision, adherence_record) -> None:
+        """Apply a Decision to patient_stats and create a PenaltyEvent if Gate 3 fired.
 
-def revert_penalty_for_record(adherence_record) -> bool:
-    """Mark any PenaltyEvent linked to this record as reverted and refund quota
-    if it was a Gate 2 consumption. Returns True if anything was reverted.
+        Mutations:
+          - Gate 1: no DB change (caller already created the AdherenceDayRecord).
+          - Gate 2 forgiven: increment forgiveness_quota_used_this_month.
+          - Gate 3: apply streak_multiplier to current_streak (min 1 for partial resets,
+                    0 for full reset), create a PenaltyEvent with the tier.
 
-    Streak recompute is intentionally deferred — restoring the exact pre-miss
-    streak requires re-running evaluate() over the patient's full history, which
-    is out of scope for this hook.
-    """
-    from .models import PenaltyEvent
+        Callers are expected to be inside a transaction.atomic() block.
+        """
+        from .models import PenaltyEvent
 
-    events = PenaltyEvent.objects.filter(adherence_record=adherence_record, reverted=False)
-    if not events.exists():
-        return False
-    for event in events:
-        event.reverted = True
-        event.save(update_fields=["reverted"])
-    return True
+        ps = self.patient_stats
 
+        if decision.gate_reached == Gate.GATE_1_GRACE:
+            return
 
-def refund_quota_for_forgiven_record(patient_stats, adherence_record) -> None:
-    """If a Gate 2 forgiveness was previously recorded against this dose (no
-    PenaltyEvent, but quota was consumed), decrement quota_used. Currently a
-    no-op stub — Gate 2 consumptions don't yet persist a discriminator
-    distinguishing them from other quota uses. Documented for future expansion.
-    """
-    # No-op: Gate 2 quota consumption is tracked only as a counter increment;
-    # there is no per-record link to undo. A future schema change could add a
-    # GraceConsumption row keyed to AdherenceDayRecord to make this reversible.
-    return
+        if decision.gate_reached == Gate.GATE_2_AUTO_FORGIVE and decision.quota_consumed:
+            ps.forgiveness_quota_used_this_month += 1
+            ps.save(update_fields=["forgiveness_quota_used_this_month"])
+            return
+
+        if decision.gate_reached == Gate.GATE_3_PENALTY:
+            if decision.streak_effect == "preserve":
+                pass
+            elif decision.streak_effect == "reset":
+                ps.current_streak = 0
+            else:
+                reduced = int(ps.current_streak * decision.streak_multiplier)
+                ps.current_streak = max(1, reduced) if ps.current_streak > 0 else 0
+            ps.save(update_fields=["current_streak"])
+
+            PenaltyEvent.objects.create(
+                patient_stats=ps,
+                adherence_record=adherence_record,
+                date=self.today,
+                tier=decision.penalty_tier,
+                penalty_given=abs(decision.xp_delta_pct),
+                reverted=False,
+            )
+
+    # --- reversal ------------------------------------------------------------
+
+    def revert_penalty_for_record(self, adherence_record) -> bool:
+        """Mark any PenaltyEvent linked to this record as reverted. Returns True
+        if anything was reverted.
+
+        Streak recompute is intentionally deferred — restoring the exact pre-miss
+        streak requires re-running evaluate() over the patient's full history, which
+        is out of scope for this hook.
+        """
+        from .models import PenaltyEvent
+
+        events = PenaltyEvent.objects.filter(adherence_record=adherence_record, reverted=False)
+        if not events.exists():
+            return False
+        for event in events:
+            event.reverted = True
+            event.save(update_fields=["reverted"])
+        return True
+
+    def refund_quota_for_forgiven_record(self, adherence_record) -> None:
+        """If a Gate 2 forgiveness was previously recorded against this dose, refund
+        the quota. Currently a no-op stub — Gate 2 consumptions don't yet persist a
+        discriminator distinguishing them from other quota uses. A future schema
+        change could add a GraceConsumption row keyed to AdherenceDayRecord to make
+        this reversible.
+        """
+        return

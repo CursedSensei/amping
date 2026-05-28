@@ -12,7 +12,7 @@ from Amping.utils import create_routers
 from adherence.utils import create_signed_url, get_public_video_url, verify_video_upload
 from users.utils import getPatientUserByToken
 from gamification.models import PatientStats
-from gamification import utils as gamification_utils
+from gamification.utils import PenaltySystem
 from .models import AdherenceDayRecord, AdherenceStatusEnum, SymptomRecord
 from .schemas import Mobile_AdherenceVideoStatusPayload, Mobile_AdherenceVideoStatusResponse, Mobile_GetAdherenceVideoEndpointPayload, Mobile_GetAdherenceVideoEndpointResponse, Mobile_UploadSymtomsPayload, Mobile_UploadSymtomsResponse, Mobile_WeeklyAdherenceResponse, Web_AdherenceMonthRequest, Web_AdherenceMonthResponse, Web_AdherenceMonthResponse, Web_AnomalousEntriesResponse, Web_ReconcileAnomalyPayload, Web_ReconcileAnomalyResponse
 
@@ -65,6 +65,7 @@ def get_anomalous_entries(request: HttpRequest, patient_id: int):
 def reconcile_anomalies(request: HttpRequest, patient_id: int, payload: Web_ReconcileAnomalyPayload):
     reconciled_count = len(payload.entry_ids)
     patient_stats = get_object_or_404(PatientStats, patient_id=patient_id)
+    penalty_system = PenaltySystem(patient_stats.patient, patient_stats, timezone.localtime())
 
     with transaction.atomic():
         for entry_id in payload.entry_ids:
@@ -77,15 +78,14 @@ def reconcile_anomalies(request: HttpRequest, patient_id: int, payload: Web_Reco
                 record.reconciliation_note = payload.reason
                 record.reconciliation_method = payload.verification_method
                 record.save()
-                gamification_utils.revert_penalty_for_record(record)
-                gamification_utils.refund_quota_for_forgiven_record(patient_stats, record)
+                penalty_system.revert_penalty_for_record(record)
+                penalty_system.refund_quota_for_forgiven_record(record)
             except AdherenceDayRecord.DoesNotExist:
                 reconciled_count -= 1
 
-        today = timezone.localdate()
-        patient_stats.current_day = gamification_utils.current_day_of_regimen(patient_stats, today)
+        patient_stats.current_day = penalty_system.current_day_of_regimen()
         patient_stats.save(update_fields=["current_day"])
-        gamification_utils.sync_month3_protected(patient_stats)
+        penalty_system.sync_month3_protected()
 
     response = Web_ReconcileAnomalyResponse(
         reconciled_count=reconciled_count,
@@ -198,35 +198,19 @@ def adherence_video_status(request: HttpRequest, payload: Mobile_AdherenceVideoS
 #         # with a real prescription schedule field when one exists.
 #         scheduled_dose_time = timezone.make_aware(datetime.combine(dose_date, time.min))
 
-#         gamification_utils.reset_monthly_quota_if_new_period(patient_stats, today)
-#         patient_stats.current_day = gamification_utils.current_day_of_regimen(patient_stats, today)
+#         penalty_system = PenaltySystem(patient, patient_stats, now)
+#         penalty_system.reset_monthly_quota_if_new_period()
+#         patient_stats.current_day = penalty_system.current_day_of_regimen()
 #         patient_stats.save(update_fields=["current_day"])
-#         gamification_utils.sync_month3_protected(patient_stats)
+#         penalty_system.sync_month3_protected()
 
 #         lateness_hours = (now - scheduled_dose_time).total_seconds() / 3600.0
 #         if lateness_hours > 0:
-#             miss_dates = gamification_utils.get_miss_dates_past_7d(patient, today)
-#             # Include the current dose as the latest miss candidate for matrix evaluation.
-#             miss_dates_for_eval = miss_dates + [dose_date] if dose_date not in miss_dates else miss_dates
-
-#             decision = gamification_utils.evaluate(
-#                 patient_id=patient.id,
-#                 birthyear=patient.birthyear,
-#                 now=now,
+#             decision = penalty_system.evaluate(
 #                 scheduled_dose_time=scheduled_dose_time,
 #                 dose_date=dose_date,
-#                 current_day_of_regimen=patient_stats.current_day,
-#                 miss_dates_past_7d=miss_dates_for_eval,
-#                 last_relapse_date=gamification_utils.get_last_relapse_date(patient, today),
-#                 prior_relapses_30d=gamification_utils.get_prior_relapses_30d(patient, today),
-#                 quota_used_this_month=patient_stats.forgiveness_quota_used_this_month,
 #             )
-#             gamification_utils.apply_decision(
-#                 decision=decision,
-#                 patient_stats=patient_stats,
-#                 adherence_record=record,
-#                 today=today,
-#             )
+#             penalty_system.apply_decision(decision, record)
 
 #         # Streak increments only when the dose isn't being penalised. Gate 1/Gate 2
 #         # both count as a successful dose for streak purposes; Gate 3 doesn't.
