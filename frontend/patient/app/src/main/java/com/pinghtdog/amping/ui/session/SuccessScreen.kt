@@ -67,8 +67,8 @@ fun SuccessScreen(
         Spacer(modifier = Modifier.height(8.dp))
 
         val encouragingMessage = when (uiState.activeProfile) {
-            "youth" -> "Crushed it, Leo! Your streak is locked in. Let's conquer tomorrow! 🚀"
-            "senior" -> "Splendid work, Lola. You are doing a wonderful job caring for your health. ❤️"
+            "youth" -> "Crushed it, ${uiState.firstname}! Your streak is locked in. Let's conquer tomorrow! 🚀"
+            "senior" -> "Splendid work, ${uiState.firstname}. You are doing a wonderful job caring for your health. ❤️"
             else -> "Daily TB medication compliance successfully logged. Your streak record is secure."
         }
 

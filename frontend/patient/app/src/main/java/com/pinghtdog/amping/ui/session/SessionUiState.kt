@@ -15,6 +15,7 @@ data class SessionUiState(
     val uploadProgress: Float = 0f,
     val emergencyState: String? = null, // Non-null displays crisis override card
     val activeProfile: String = "youth", // "youth", "senior", "adult"
+    val firstname: String = "Leo",
     val streakCount: Int = 5,
     val xpEarned: Int = 120,
     val isNetworkMode: Boolean = false, // Toggle Ktor vs Mock mode

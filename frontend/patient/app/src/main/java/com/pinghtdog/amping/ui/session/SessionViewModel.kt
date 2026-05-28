@@ -15,6 +15,7 @@ import com.pinghtdog.amping.data.model.Message
 import com.pinghtdog.amping.data.model.SessionPhase
 import com.pinghtdog.amping.data.model.ToolCall
 import com.pinghtdog.amping.data.repository.GabbyRepository
+import com.pinghtdog.amping.data.repository.TokenManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.delay
@@ -43,6 +44,8 @@ class SessionViewModel @Inject constructor(
     private var hasLoggedVoices = false
 
     init {
+        val hasToken = TokenManager.getRefreshToken(context) != null
+        _uiState.update { it.copy(isNetworkMode = hasToken) }
         initializeTts()
         loadOfflineQueue()
         startPeriodicBackgroundSync()
@@ -235,11 +238,33 @@ class SessionViewModel @Inject constructor(
     private fun initializeGreeting() {
         viewModelScope.launch {
             _uiState.update { it.copy(assistantTyping = true) }
+            
+            if (_uiState.value.isNetworkMode) {
+                try {
+                    val profile = gabbyRepository.getPatientProfile(context)
+                    val stats = gabbyRepository.getStats(context)
+                    _uiState.update { it.copy(
+                        firstname = profile.firstname,
+                        streakCount = stats.currentStreak.toInt()
+                    ) }
+                } catch (e: Exception) {
+                    android.util.Log.e("SessionViewModel", "Failed to pre-fetch patient data for greeting", e)
+                }
+            } else {
+                val mockName = when (_uiState.value.activeProfile) {
+                    "youth" -> "Leo"
+                    "senior" -> "Lola"
+                    else -> "Patient"
+                }
+                _uiState.update { it.copy(firstname = mockName) }
+            }
+            
             delay(500)
+            val name = _uiState.value.firstname
             val welcomeMessage = when (_uiState.value.activeProfile) {
-                "youth" -> "Hey there, Leo! ready for today's super check-in? How are you feeling overall, champion? Let me know so we can log your TB pill and keep that massive streak alive!"
-                "senior" -> "Good day, Lola. It is time for our daily health check-in, my dear. How are you feeling overall today? Please tell me so we can complete your TB dose safely."
-                else -> "Welcome to your daily VDOT compliance session. Please indicate your current overall state of physical wellbeing so we may proceed with logging your TB medication ingestion."
+                "youth" -> "Hello $name! Ready for today? How are you feeling overall, champion? Let me know so we can keep that streak alive!"
+                "senior" -> "Good day, $name. It is time for our daily health check-in, my dear. How are you feeling today?"
+                else -> "Welcome, $name, to your daily VDOT compliance session. Please indicate your current overall state of physical wellbeing."
             }
             _uiState.update {
                 it.copy(
@@ -253,12 +278,31 @@ class SessionViewModel @Inject constructor(
 
     fun selectProfile(profile: String) {
         if (_uiState.value.activeProfile == profile) return
-        _uiState.value = SessionUiState(activeProfile = profile)
+        val currentNetworkMode = _uiState.value.isNetworkMode
+        _uiState.value = SessionUiState(activeProfile = profile, isNetworkMode = currentNetworkMode)
         initializeGreeting()
     }
 
     fun toggleNetworkMode(enabled: Boolean) {
         _uiState.update { it.copy(isNetworkMode = enabled) }
+        if (enabled) {
+            fetchProductionStats()
+        }
+    }
+
+    fun fetchProductionStats() {
+        viewModelScope.launch {
+            try {
+                val profile = gabbyRepository.getPatientProfile(context)
+                val stats = gabbyRepository.getStats(context)
+                _uiState.update { it.copy(
+                    firstname = profile.firstname,
+                    streakCount = stats.currentStreak.toInt()
+                ) }
+            } catch (e: Exception) {
+                android.util.Log.e("SessionViewModel", "Failed to fetch production stats", e)
+            }
+        }
     }
 
     fun dismissNetworkError() {
@@ -311,6 +355,7 @@ class SessionViewModel @Inject constructor(
     }
 
     private suspend fun runNetworkChatFlow(prompt: String) {
+        var streamMessageIndex = -1
         try {
             // Read local motivation text file
             val motivation = try {
@@ -320,39 +365,79 @@ class SessionViewModel @Inject constructor(
                 ""
             }
 
+            val phaseStr = when (_uiState.value.conversationStage) {
+                2 -> "symptoms"
+                3 -> "vdot"
+                else -> "empathy"
+            }
+
             // 1. Fetch transient Session JWT Token
             val sessionInfo = gabbyRepository.fetchSessionToken(
                 userId = _uiState.value.activeProfile,
-                motivation = if (motivation.isNotEmpty()) motivation else null
+                motivation = if (motivation.isNotEmpty()) motivation else null,
+                currentPhase = phaseStr
             )
 
-            // Inject temporary streaming bubble
+            // Inject temporary streaming bubble with helpful cold start message
             val initialHistory = _uiState.value.chatHistory.toMutableList()
-            val streamMessageIndex = initialHistory.size
-            initialHistory.add(Message(role = "assistant", content = ""))
+            streamMessageIndex = initialHistory.size
+            val historyToSend = initialHistory.takeLast(10)
+            val sleepingMsg = "💤 Gabby is sleeping... (This may take 3-5 minutes, please keep the app open)..."
+            initialHistory.add(Message(role = "assistant", content = sleepingMsg))
             _uiState.update {
                 it.copy(
                     chatHistory = initialHistory,
-                    assistantTyping = false
+                    assistantTyping = false,
+                    currentSubtitleText = sleepingMsg
                 )
             }
 
             var streamingContent = ""
+            var isFirstToken = true
 
-            // 2. Stream tokens via Ktor WebSockets
+            // 2. Stream tokens via Ktor WebSockets, passing full conversation history
             gabbyRepository.streamChatResponse(
                 token = sessionInfo.token,
                 modalUrl = sessionInfo.modalUrl,
-                prompt = prompt
+                messages = historyToSend
             ).collect { chunk ->
                 when (chunk.type) {
+                    "connected" -> {
+                        _uiState.update { state ->
+                            val updatedHistory = state.chatHistory.toMutableList()
+                            if (streamMessageIndex != -1 && streamMessageIndex < updatedHistory.size) {
+                                updatedHistory[streamMessageIndex] = Message(role = "assistant", content = "🤔 Gabby is thinking...")
+                            }
+                            state.copy(
+                                chatHistory = updatedHistory,
+                                currentSubtitleText = "🤔 Gabby is thinking..."
+                            )
+                        }
+                    }
                     "token" -> {
                         chunk.content?.let { token ->
+                            if (isFirstToken) {
+                                isFirstToken = false
+                                streamingContent = ""
+                                _uiState.update { it.copy(currentSubtitleText = "") }
+                            }
                             streamingContent += token
+                            
+                            val displayContent = if (streamingContent.contains("<think>")) {
+                                if (streamingContent.contains("</think>")) {
+                                    streamingContent.substringAfter("</think>").trim()
+                                } else {
+                                    "🤔 Gabby is thinking..."
+                                }
+                            } else {
+                                streamingContent
+                            }
+                            
                             _uiState.update { state ->
                                 val updatedHistory = state.chatHistory.toMutableList()
-                                if (streamMessageIndex < updatedHistory.size) {
-                                    updatedHistory[streamMessageIndex] = Message(role = "assistant", content = streamingContent)
+                                if (streamMessageIndex != -1 && streamMessageIndex < updatedHistory.size) {
+                                    val cleanDisplay = displayContent.replace(Regex("<tool_call>[\\s\\S]*?<\\/tool_call>"), "").trim()
+                                    updatedHistory[streamMessageIndex] = Message(role = "assistant", content = cleanDisplay)
                                 }
                                 state.copy(chatHistory = updatedHistory)
                             }
@@ -362,9 +447,10 @@ class SessionViewModel @Inject constructor(
                         throw Exception(chunk.message ?: "Modal inference container reported an internal error.")
                     }
                     "done" -> {
-                        // Finished streaming. Parse the final accumulated string for tool-call matches
-                        val finalMessageText = _uiState.value.chatHistory.getOrNull(streamMessageIndex)?.content ?: streamingContent
-                        val parsedResponse = parseResponse(finalMessageText)
+                        // Always parse from the raw accumulated content — the chat history copy
+                        // has already had <tool_call> tags stripped for display purposes, so
+                        // reading from chatHistory here would silently discard the tool call.
+                        val parsedResponse = parseResponse(streamingContent)
                         handleInferenceResult(parsedResponse)
                     }
                 }
@@ -372,11 +458,17 @@ class SessionViewModel @Inject constructor(
         } catch (e: Exception) {
             val errorMessage = e.localizedMessage ?: "Failed to reach Gabby."
             android.util.Log.e("GabbyNetwork", "Error running network chat flow: $errorMessage", e)
-            _uiState.update {
-                it.copy(
+            _uiState.update { state ->
+                val updatedHistory = state.chatHistory.toMutableList()
+                if (streamMessageIndex != -1 && streamMessageIndex < updatedHistory.size) {
+                    updatedHistory[streamMessageIndex] = Message(role = "assistant", content = "⚠️ Network Connection Interrupted: $errorMessage")
+                } else {
+                    updatedHistory.add(Message(role = "assistant", content = "⚠️ Network Connection Interrupted: $errorMessage"))
+                }
+                state.copy(
                     assistantTyping = false,
                     networkError = errorMessage,
-                    chatHistory = it.chatHistory + Message(role = "assistant", content = "⚠️ Network Connection Interrupted: $errorMessage")
+                    chatHistory = updatedHistory
                 )
             }
         }
@@ -450,6 +542,19 @@ class SessionViewModel @Inject constructor(
 
     private fun parseResponse(rawText: String): Message {
         val toolCallRegex = Regex("""<tool_call>([\s\S]*?)<\/tool_call>""")
+        val thinkRegex = Regex("""<think>([\s\S]*?)<\/think>""")
+
+        // Log raw response and any extracted thinking block to Android Logcat
+        android.util.Log.d("LLM_Output", "--- RAW LLM RESPONSE RECEIVED ---")
+        android.util.Log.d("LLM_Output", rawText)
+
+        val thinkMatch = thinkRegex.find(rawText)
+        if (thinkMatch != null) {
+            val thinkingBlock = thinkMatch.groupValues[1].trim()
+            android.util.Log.d("LLM_Output", "--- EXTRACTED THINKING BLOCK ---")
+            android.util.Log.d("LLM_Output", thinkingBlock)
+        }
+
         val match = toolCallRegex.find(rawText)
         var parsedToolCall: ToolCall? = null
 
@@ -481,7 +586,14 @@ class SessionViewModel @Inject constructor(
             }
         }
 
-        val cleanContent = rawText.replace(toolCallRegex, "").trim()
+        // Clean out both think tags and tool call tags from final displayed content
+        val contentWithoutThink = rawText.replace(thinkRegex, "").trim()
+        val cleanContent = contentWithoutThink.replace(toolCallRegex, "").trim()
+
+        android.util.Log.d("LLM_Output", "--- FINAL CLEANED RESPONSE CONTENT ---")
+        android.util.Log.d("LLM_Output", cleanContent)
+        android.util.Log.d("LLM_Output", "--------------------------------------")
+
         return Message(
             role = "assistant",
             content = cleanContent,
@@ -617,14 +729,33 @@ class SessionViewModel @Inject constructor(
         val symptoms = _uiState.value.selectedSymptoms
         val severity = _uiState.value.nauseaSeverity
 
-        val symptomString = if (symptoms.isEmpty() || symptoms.contains("None of these")) {
+        val symptomList = if (symptoms.isEmpty() || symptoms.contains("None of these")) {
+            emptyList()
+        } else {
+            symptoms.map { if (it == "Nausea") "nausea ($severity severity)" else it.lowercase() }
+        }
+
+        val symptomString = if (symptomList.isEmpty()) {
             "no side effects"
         } else {
-            symptoms.joinToString(", ") + (if (symptoms.contains("Nausea")) " ($severity severity)" else "")
+            symptomList.joinToString(", ")
         }
 
         // Send a simulated user action to Gabby
         val messageContent = "Symptoms reported: $symptomString."
+        
+        if (_uiState.value.isNetworkMode) {
+            viewModelScope.launch {
+                try {
+                    val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                    val dateStr = sdf.format(java.util.Date())
+                    gabbyRepository.uploadSymptoms(context, dateStr, symptomList)
+                } catch (e: Exception) {
+                    android.util.Log.e("SessionViewModel", "Failed to upload symptoms to production", e)
+                }
+            }
+        }
+        
         sendMessage(messageContent)
     }
 
@@ -720,7 +851,7 @@ class SessionViewModel @Inject constructor(
                     com.pinghtdog.amping.data.repository.OfflineQueueManager.updateEntryStatus(context, queueEntry.id, "Uploading")
                     loadOfflineQueue()
                     
-                    gabbyRepository.uploadVideo(encryptedBytes)
+                    gabbyRepository.uploadVideoToProduction(context, encryptedBytes)
                     
                     com.pinghtdog.amping.data.repository.OfflineQueueManager.removeEntry(context, queueEntry.id)
                     loadOfflineQueue()
@@ -833,7 +964,7 @@ class SessionViewModel @Inject constructor(
                             file.readBytes()
                         }
                         
-                        gabbyRepository.uploadVideo(encryptedBytes)
+                        gabbyRepository.uploadVideoToProduction(context, encryptedBytes)
                         
                         com.pinghtdog.amping.data.repository.OfflineQueueManager.removeEntry(context, entry.id)
                         loadOfflineQueue()

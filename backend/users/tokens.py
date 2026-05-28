@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from django.conf import settings
 import os
 
-def generate_modal_access_token(patient_user, motivation: str = "") -> str:
+def generate_modal_access_token(patient_user, motivation: str = "", current_phase: str = "empathy") -> str:
     """
     Generates a short-lived signed JWT session token for the PatientUser client
     to communicate directly with the serverless Modal GPU backend.
@@ -23,7 +23,7 @@ def generate_modal_access_token(patient_user, motivation: str = "") -> str:
         "sub": str(patient_user.id),
         "username": f"{patient_user.firstname} {patient_user.lastname}".strip(),
         "profile": profile,
-        "current_phase": "empathy", # Always start check-in at Empathy Phase
+        "current_phase": current_phase, # Pass the active dynamic clinical check-in phase
         "streak": getattr(patient_user, "current_streak", 5), # Fallback to default streak
         "motivation": motivation,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=15),

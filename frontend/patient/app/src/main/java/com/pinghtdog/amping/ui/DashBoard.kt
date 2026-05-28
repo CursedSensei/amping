@@ -1,8 +1,8 @@
 package com.pinghtdog.amping.ui
 
-
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,21 +17,24 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.SportsSoccer
-import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,9 +42,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.pinghtdog.amping.ui.theme.CyanPrimary
 import com.pinghtdog.amping.ui.theme.DarkNavy
 import com.pinghtdog.amping.ui.theme.LightBackground
@@ -49,10 +52,21 @@ import com.pinghtdog.amping.ui.theme.RedPenalty
 import com.pinghtdog.amping.ui.theme.TextDark
 import com.pinghtdog.amping.ui.theme.TextMuted
 import com.pinghtdog.amping.ui.components.GabbyIdle
-
+import com.pinghtdog.amping.ui.components.AnimatedGabby
+import com.pinghtdog.amping.ui.components.GabbyState
+import com.pinghtdog.amping.ui.components.PetBackground
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 
 @Composable
-fun DashBoard(onStartSession: () -> Unit) {
+fun DashBoard(
+    onStartSession: () -> Unit,
+    viewModel: DashboardViewModel = hiltViewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val scrollState = rememberScrollState()
+    var gabbyState by remember { mutableStateOf(GabbyState.IDLE) }
+
     Scaffold(
         bottomBar = { CustomBottomNavigation(onGabbyClick = onStartSession) },
         containerColor = LightBackground
@@ -61,30 +75,67 @@ fun DashBoard(onStartSession: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .verticalScroll(scrollState),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Profile Switcher Top Bar
+            // Interactive Server Toggle Top Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(DarkNavy)
-                    .padding(vertical = 12.dp),
-                horizontalArrangement = Arrangement.Center,
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Leo (Kid - 12)",
+                    text = "${uiState.firstname} (Patient Profile)",
                     color = CyanPrimary,
-                    fontWeight = FontWeight.Bold,
-                    textDecoration = TextDecoration.Underline,
-                    modifier = Modifier.padding(end = 16.dp)
+                    fontWeight = FontWeight.Bold
                 )
-                Text(
-                    text = "Lola (Senior - 68)",
-                    color = Color.LightGray
-                )
+                
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable { viewModel.toggleNetworkMode(!uiState.isNetworkMode) }
+                ) {
+                    Text(
+                        text = "Connection: ",
+                        color = Color.LightGray,
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = if (uiState.isNetworkMode) "LOCAL SERVER" else "OFFLINE MOCK",
+                        color = if (uiState.isNetworkMode) CyanPrimary else RedPenalty,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    )
+                }
             }
 
+            // Loading / Error Banners
+            if (uiState.isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(2.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = CyanPrimary)
+                }
+            }
 
+            uiState.errorMessage?.let { error ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = RedPenalty.copy(alpha = 0.1f)),
+                    shape = RoundedCornerShape(0.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = error,
+                        color = RedPenalty,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                    )
+                }
+            }
 
             // Hero Header
             Card(
@@ -109,7 +160,7 @@ fun DashBoard(onStartSession: () -> Unit) {
                             letterSpacing = 1.sp
                         )
                         Text(
-                            text = "Hi, Leo!",
+                            text = "Hi, ${uiState.firstname}!",
                             color = TextDark,
                             fontSize = 28.sp,
                             fontWeight = FontWeight.ExtraBold
@@ -127,14 +178,50 @@ fun DashBoard(onStartSession: () -> Unit) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            // --- GABBY ROOM AREA ---
+//            Box(
+//                modifier = Modifier.fillMaxWidth(),
+//                contentAlignment = Alignment.Center
+//            ) {
+//                // Background layer
+//                PetBackground(modifier = Modifier.matchParentSize())
+//
+//                Column(
+//                    horizontalAlignment = Alignment.CenterHorizontally,
+//                    modifier = Modifier.fillMaxWidth()
+//                ) {
+                    Spacer(modifier = Modifier.height(150.dp))
 
-            GabbyIdle(
-                modifier = Modifier.size(120.dp)
+                    // Central Gabby - Like Pou
+                    AnimatedGabby(
+                        state = gabbyState,
+                        modifier = Modifier
+                            .size(320.dp)
+                            .clickable {
+                                gabbyState = if (gabbyState == GabbyState.IDLE) GabbyState.SPEAKING else GabbyState.IDLE
+                            }
+                    )
+
+                    Spacer(modifier = Modifier.height(30.dp))
+//                }
+//            }
+//            // --- END GABBY ROOM AREA ---
+
+            // Section Header for Stats
+            Text(
+                text = "YOUR PROGRESS",
+                color = TextMuted,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 2.sp,
+                modifier = Modifier.padding(bottom = 16.dp)
             )
 
             // Streak Widget
-            StreakCircularWidget()
+            StreakCircularWidget(
+                streak = uiState.currentStreak,
+                bestStreak = uiState.bestStreak
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -170,18 +257,24 @@ fun DashBoard(onStartSession: () -> Unit) {
                     )
                 }
             }
+            
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
 
 @Composable
-fun StreakCircularWidget() {
+fun StreakCircularWidget(streak: Int, bestStreak: Int) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(250.dp),
         contentAlignment = Alignment.Center
     ) {
+        val total = if (bestStreak > 0) bestStreak else 1
+        val ratio = streak.toFloat() / total
+        val sweepAngle = (ratio * 360f).coerceIn(0f, 360f)
+
         Canvas(modifier = Modifier.size(200.dp)) {
             // Background Track
             drawArc(
@@ -192,7 +285,7 @@ fun StreakCircularWidget() {
             // Quota Arc (Blue)
             drawArc(
                 color = CyanPrimary,
-                startAngle = -90f, sweepAngle = 220f, useCenter = false,
+                startAngle = -90f, sweepAngle = sweepAngle, useCenter = false,
                 style = Stroke(width = 24.dp.toPx(), cap = StrokeCap.Round)
             )
             // Grace Arc (Red)
@@ -205,7 +298,7 @@ fun StreakCircularWidget() {
 
         // Center Text
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = "4", fontSize = 72.sp, fontWeight = FontWeight.Black, color = TextDark)
+            Text(text = "$streak", fontSize = 72.sp, fontWeight = FontWeight.Black, color = TextDark)
             Card(
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -241,15 +334,19 @@ fun CustomBottomNavigation(onGabbyClick: () -> Unit) {
             elevation = CardDefaults.cardElevation(8.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxSize().padding(horizontal = 32.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { /*TODO*/ }) { Icon(Icons.Outlined.CalendarToday, null, tint = TextMuted) }
-                IconButton(onClick = { /*TODO*/ }) { Icon(Icons.Outlined.TrendingUp, null, tint = TextMuted) }
-                Spacer(modifier = Modifier.width(56.dp)) // Space for FAB
-                IconButton(onClick = { /*TODO*/ }) { Icon(Icons.Outlined.Person, null, tint = TextMuted) }
-                IconButton(onClick = { /*TODO*/ }) { Icon(Icons.Outlined.Settings, null, tint = TextMuted) }
+                IconButton(onClick = { /* Navigate Home */ }) { 
+                    Icon(Icons.Outlined.Home, null, tint = CyanPrimary) 
+                }
+                
+                Spacer(modifier = Modifier.width(72.dp)) // Space for Gabby FAB
+                
+                IconButton(onClick = { /* Navigate Settings */ }) { 
+                    Icon(Icons.Outlined.Settings, null, tint = TextMuted) 
+                }
             }
         }
 
@@ -263,23 +360,9 @@ fun CustomBottomNavigation(onGabbyClick: () -> Unit) {
             shape = CircleShape,
             containerColor = CyanPrimary
         ) {
-            Icon(Icons.Filled.Face, contentDescription = "Talk to Gabby", tint = Color.White, modifier = Modifier.size(40.dp))
+            GabbyIdle(
+                modifier = Modifier.size(120.dp)
+            )
         }
-    }
-}
-
-@Composable
-fun GabbyIdle(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .background(CyanPrimary, CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            Icons.Filled.Face,
-            contentDescription = "Gabby Idle",
-            tint = Color.White,
-            modifier = Modifier.size(80.dp)
-        )
     }
 }

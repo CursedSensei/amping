@@ -111,28 +111,80 @@ def create_secure_proxy_app():
     PHASE_PROMPTS = {
         "empathy": (
             "You are currently in Phase 1: Empathetic Check-up.\n"
-            "Your goal is to greet the patient warmly, show genuine clinical empathy, and immediately steer them towards their health check-in.\n"
-            "CRITICAL: Do NOT ask open-ended questions like 'How can I assist you in feeling better today?'. "
-            "Instead, ask them specifically how they are feeling today so they select their mood, steering them directly to log their symptoms.\n"
-            "Once they express their emotional state or mood (e.g. fine, sad, tired), you MUST append a structured tool call strictly in this format at the end of your response to transition:\n"
-            "<tool_call> {\"name\": \"show_symptom_checklist\", \"arguments\": {\"mood\": \"Positive\"}} </tool_call>\n"
-            "Valid mood values: 'Positive', 'Neutral', 'Negative'."
+            "Your goal is to greet the patient warmly and guide them toward their daily health check-in.\n"
+            "\n"
+            "RULE A — EMOTIONAL DISCLOSURE: If the patient expresses sadness, loneliness, anxiety, worry, fear, grief, or any emotional difficulty:\n"
+            "  - Respond with genuine, warm empathy. Acknowledge what they shared specifically — do not be generic.\n"
+            "  - Ask ONE caring follow-up question so they feel heard (e.g. 'What has been weighing on you?' or 'Would you like to tell me more?').\n"
+            "  - Do NOT emit show_symptom_checklist in this response.\n"
+            "  - On your NEXT response after they reply, warmly bridge to the check-in and emit show_symptom_checklist.\n"
+            "\n"
+            "RULE B — GREETING OR NEUTRAL MESSAGE: If the patient's message is a greeting or a neutral/positive statement:\n"
+            "  - Do NOT ask how they are feeling or use open-ended questions.\n"
+            "  - Greet warmly and steer them directly to the symptom log.\n"
+            "  - You MUST emit show_symptom_checklist at the very end of your response.\n"
+            "\n"
+            "EXAMPLE — Emotional disclosure (Rule A, no tool call):\n"
+            "Patient: 'I am feeling sad today.'\n"
+            "Gabby: 'I am so sorry to hear that. You do not have to carry that alone. What has been weighing on your heart?'\n"
+            "\n"
+            "EXAMPLE — Bridge after emotional exchange (Rule A second turn, with tool call):\n"
+            "Patient: 'I just miss my family a lot.'\n"
+            "Gabby: 'I hear you. That kind of longing is real and it matters. While I hold that with you, let us also take care of your body today.\n"
+            "<tool_call> {\"name\": \"show_symptom_checklist\"} </tool_call>'\n"
+            "\n"
+            "EXAMPLE — Neutral greeting (Rule B, with tool call):\n"
+            "Patient: 'Hi Gabby'\n"
+            "Gabby: 'Hello! I am glad you are here. Let us take care of your health today.\n"
+            "<tool_call> {\"name\": \"show_symptom_checklist\"} </tool_call>'"
         ),
         "symptoms": (
             "You are currently in Phase 2: Symptom Logging.\n"
-            "Empathetically acknowledge their mood and ask if they are experiencing any medication side effects "
-            "(such as nausea, vomiting, joint pain, fatigue, or dark urine).\n"
-            "CRITICAL: Do NOT ask open-ended questions. Steer the patient directly to choose their side-effects so we can progress to their VDOT filming.\n"
-            "Once they respond with their physical status, you MUST generate a structured tool call strictly in this format at the end of your response to transition:\n"
-            "<tool_call> {\"name\": \"transition_to_vdot\", \"arguments\": {\"side_effects\": \"nausea\", \"nausea_severity\": \"Mild\"}} </tool_call>\n"
-            "Valid nausea_severity values: 'None', 'Mild', 'Severe'."
+            "The patient has ALREADY submitted their symptom checklist. Their reported symptoms are in their message (e.g. 'Symptoms reported: nausea (None severity).' or 'Symptoms reported: no side effects.').\n"
+            "CRITICAL: The checklist is ALREADY COMPLETE. Do NOT ask them to fill out a checklist or choose symptoms again.\n"
+            "Read their reported symptoms carefully. Acknowledge them with brief, genuine empathy (e.g. note the specific symptom if present, or affirm they are clear). Then immediately generate the transition_to_vdot tool call.\n"
+            "Extract side_effects and nausea_severity from their message. Valid nausea_severity values: 'None', 'Mild', 'Severe'.\n"
+            "You MUST generate a structured tool call strictly in this format at the very end of your response:\n"
+            "<tool_call> {\"name\": \"transition_to_vdot\", \"arguments\": {\"side_effects\": \"nausea\", \"nausea_severity\": \"None\"}} </tool_call>\n"
+            "EXAMPLE RESPONSE (patient reported nausea, None severity):\n"
+            "Noted. Nausea logged with no severe intensity today. Please drink some water and rest. Are you ready to record your medication video now?\n"
+            "<tool_call> {\"name\": \"transition_to_vdot\", \"arguments\": {\"side_effects\": \"nausea\", \"nausea_severity\": \"None\"}} </tool_call>\n"
+            "EXAMPLE RESPONSE (no side effects reported):\n"
+            "Wonderful. No side effects noted today. Are you ready to begin your VDOT recording?\n"
+            "<tool_call> {\"name\": \"transition_to_vdot\", \"arguments\": {\"side_effects\": \"none\", \"nausea_severity\": \"None\"}} </tool_call>"
         ),
         "vdot": (
             "You are currently in Phase 3: Secure VDOT Filming.\n"
             "Warmly guide the patient to record their daily TB medication intake. Keep instructions brief, motivational, and highly focused.\n"
             "CRITICAL: Do NOT ask open-ended questions. Steer the patient directly to activate their camera stream and complete their ingestion.\n"
             "When they indicate readiness or when you prompt them, you MUST output a structured tool call strictly in this format:\n"
+            "<tool_call> {\"name\": \"trigger_vdot\", \"arguments\": {\"duration_seconds\": 15}} </tool_call>\n"
+            "EXAMPLE RESPONSE:\n"
+            "Excellent. Please hold the pill clearly in the frame, take it, and show me you have swallowed it safely. Press the button below to start filming.\n"
             "<tool_call> {\"name\": \"trigger_vdot\", \"arguments\": {\"duration_seconds\": 15}} </tool_call>"
+        ),
+        "complete": (
+            "The patient has just successfully completed their daily VDOT medication check-in and video upload.\n"
+            "Your task is to craft a warm, brief, and genuinely personal completion message.\n"
+            "\n"
+            "INSTRUCTIONS:\n"
+            "- Review the full conversation history above. If the patient shared emotional difficulty earlier "
+            "(sadness, grief, loss, worry, loneliness), acknowledge that they completed today's check-in despite "
+            "what they are carrying. Be specific — name what they shared. Do not be generic.\n"
+            "- The patient's motivation for taking this medication is in the system context. Weave it into your "
+            "message naturally, as something you genuinely remember — do not quote it literally or say 'because of X'.\n"
+            "- Be celebratory but sincere and concise. Avoid hollow or generic praise.\n"
+            "- You MUST emit this tool call at the very end of your response:\n"
+            "<tool_call> {\"name\": \"transition_to_success\"} </tool_call>\n"
+            "\n"
+            "EXAMPLE (patient shared grief, motivated by family):\n"
+            "Even on a day as heavy as this one, you showed up — for yourself and for the people who love you. "
+            "That is not a small thing. Check-in complete.\n"
+            "<tool_call> {\"name\": \"transition_to_success\"} </tool_call>\n"
+            "\n"
+            "EXAMPLE (no emotional context, patient motivated by getting well):\n"
+            "Well done. You are one step closer to getting well. Your check-in is locked in — keep that streak going.\n"
+            "<tool_call> {\"name\": \"transition_to_success\"} </tool_call>"
         )
     }
 
@@ -216,39 +268,35 @@ def create_secure_proxy_app():
             
             print(f"Token verified! Patient: {patient_id}, Profile: {profile}, Active Phase: {current_phase}")
 
-            # 2. Await prompt text frame from Ktor WebSocket
-            prompt = await websocket.receive_text()
-            print(f"Received patient prompt: '{prompt}'")
+            # 2. Await conversation history JSON frame from Ktor WebSocket.
+            # Format: [{"role": "user"|"assistant", "content": "..."}, ...]
+            messages_text = await websocket.receive_text()
+            try:
+                chat_messages = json.loads(messages_text)
+                if not isinstance(chat_messages, list):
+                    raise ValueError("Expected a JSON array of messages")
+            except (json.JSONDecodeError, ValueError, TypeError):
+                # Backward-compat fallback: treat as a plain-text single user prompt
+                chat_messages = [{"role": "user", "content": messages_text}]
 
-            # --- Programmatic Fail-safe for VDOT Upload Complete ---
+            # Derive the last user message for intercepts and fail-safe keyword matching
+            prompt = next(
+                (m.get("content", "") for m in reversed(chat_messages) if m.get("role") == "user"),
+                ""
+            )
+            print(f"Received {len(chat_messages)} messages. Last user prompt: '{prompt}'")
+
+            # When the patient signals upload complete, override the phase so the LLM
+            # crafts a personalized completion message using the full conversation history
+            # (Phase 1 emotional context + onboarding motivation) rather than a template.
             if "vdot upload complete" in prompt.lower() or "upload complete" in prompt.lower() or "ingestion complete" in prompt.lower():
-                motivation_text = f" because of '{motivation}'" if motivation else ""
-                congratulations = {
-                    "youth": f"Awesome job, champion! You successfully completed today's check-in and uploaded your VDOT video. Remember the reason why you are taking this medication{motivation_text}! Keep that streak alive!",
-                    "senior": f"Splendid work, Lola. You have successfully completed your daily medication check-in and video upload. Remember the reason why you are taking this medication{motivation_text}. Your health is so precious, dear.",
-                    "adult": f"Ingestion verification video uploaded successfully. Remember the reason why you are taking this medication{motivation_text}. Compliance log updated."
-                }.get(profile, f"Medication video uploaded successfully. Remember the reason why you are taking this medication{motivation_text}.")
-                
-                response_content = f"{congratulations}\n\n<tool_call> {{\"name\": \"transition_to_success\"}} </tool_call>"
-                await websocket.send_text(json.dumps({
-                    "type": "token",
-                    "content": response_content
-                }))
-                await websocket.send_text(json.dumps({
-                    "type": "done"
-                }))
-                await websocket.close()
-                return
+                current_phase = "complete"
 
             # Check if background vLLM daemon is still binding weights.
             # If so, stream friendly live status updates directly to the client rather than hanging!
             global is_vllm_ready
             if not is_vllm_ready:
-                print("vLLM daemon still initializing in background. Informing client...")
-                await websocket.send_text(json.dumps({
-                    "type": "token",
-                    "content": "Gabby is warming up (loading GPU model weights)... Please hold on a few seconds.\n\n"
-                }))
+                print("vLLM daemon still initializing in background. Waiting for model to load...")
                 while not is_vllm_ready:
                     await asyncio.sleep(2.0)
 
@@ -264,18 +312,23 @@ def create_secure_proxy_app():
 
             system_prompt += (
                 f"\nCRITICAL STYLE RULES:\n"
-                f"- STRICTLY AVOID USING EMOJIS: Do not use any emojis, icons, emoticons, or decorative symbols under any circumstances. All your replies must contain plain text only.\n"
+                f"- STRICTLY FORBIDDEN TO USE EMOJIS: Do NOT use any emojis, stars (e.g. 🌟), icons, smiley faces, emoticons, or decorative symbols under any circumstances. All your replies must contain plain text only. If you use an emoji, you fail.\n"
                 f"- USE MINIMAL LANGUAGE: Be extremely concise, direct, and brief. Use minimal sentences. Avoid extra explanations or chatty filler text.\n"
                 f"- PROFESSIONAL CHILD-LIKE MANNERISM: Maintain a professional, clinically supportive, and safe tone, but express it with innocent, simple, child-like mannerisms (using simple words, gentle vocabulary, straightforward instructions, and honest guidance)."
             )
 
+            # Build the full LLM message list: system prompt + conversation history
+            llm_messages = [{"role": "system", "content": system_prompt}]
+            for m in chat_messages:
+                role = m.get("role", "user")
+                content = m.get("content", "")
+                if role in ("user", "assistant") and content:
+                    llm_messages.append({"role": role, "content": content})
+
             openai_payload = {
                 "model": "gabby-model",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.7,
+                "messages": llm_messages,
+                "temperature": 0.0,
                 "max_tokens": 512,
                 "stream": True # Standard SSE streaming
             }
@@ -298,6 +351,7 @@ def create_secure_proxy_app():
                         await websocket.close()
                         return
 
+                    full_response = ""
                     async for line in response.aiter_lines():
                         if not line.strip():
                             continue
@@ -309,6 +363,7 @@ def create_secure_proxy_app():
                                 chunk_json = json.loads(data_str)
                                 text_delta = chunk_json["choices"][0]["delta"].get("content", "")
                                 if text_delta:
+                                    full_response += text_delta
                                     # Yield token chunk as a WebSocket text frame
                                     await websocket.send_text(json.dumps({
                                         "type": "token",
@@ -316,6 +371,71 @@ def create_secure_proxy_app():
                                     }))
                             except Exception:
                                 pass
+
+                    # Programmatic fail-safe: inject the correct tool call if the LLM forgot it
+                    if "<tool_call>" not in full_response:
+                        prompt_lower = prompt.lower()
+
+                        if current_phase == "empathy":
+                            # If the patient expressed an emotional state, let Gabby's empathetic
+                            # response stand without forcing the checklist. The LLM is instructed
+                            # to bridge to the checklist on the next turn.
+                            emotional_keywords = [
+                                "sad", "depress", "anxious", "anxiety", "worried", "worry",
+                                "scared", "afraid", "lonely", "stressed", "stress", "overwhelm",
+                                "angry", "upset", "unhappy", "crying", "struggling", "nervous",
+                                "frustrated", "heartbroken", "grieving", "grief", "miserable"
+                            ]
+                            is_emotional = any(kw in prompt_lower for kw in emotional_keywords)
+                            if not is_emotional:
+                                transition_question = {
+                                    "youth": "\nLet us check your body today. Please fill out the symptom checklist below.",
+                                    "senior": "\nLet us review your body today, dear friend. Please check any symptoms you are feeling in the checklist card below.",
+                                    "adult": "\nLet us now document your physical symptoms. Please fill out the interactive symptom checklist below to log your status."
+                                }.get(profile, "\nLet us now document your physical symptoms. Please fill out the interactive symptom checklist below to log your status.")
+                                fallback_block = f"{transition_question}\n\n<tool_call> {{\"name\": \"show_symptom_checklist\"}} </tool_call>"
+                                await websocket.send_text(json.dumps({"type": "token", "content": fallback_block}))
+
+                        elif current_phase == "symptoms":
+                            # Patient has submitted the checklist — extract symptoms and transition to VDOT
+                            severity = (
+                                "Severe" if any(w in prompt_lower for w in ["severe", "very", "intense", "bad", "high"])
+                                else "None" if any(w in prompt_lower for w in ["none", "no side", "nothing", "zero", "no symptom"])
+                                else "Mild"
+                            )
+                            side_effects = (
+                                "nausea" if "nausea" in prompt_lower
+                                else "fatigue" if "fatigue" in prompt_lower or "tired" in prompt_lower
+                                else "joint pain" if "joint" in prompt_lower
+                                else "none"
+                            )
+                            if severity == "None" and side_effects == "none":
+                                side_effects = "none"
+                            transition_text = {
+                                "youth": "\nGot it logged! Are you ready to start your VDOT check-in now?",
+                                "senior": "\nThank you for telling me, dear. Are you ready to start the camera for your VDOT dose?",
+                                "adult": "\nTelemetry logs updated. Please confirm when ready to begin VDOT filming."
+                            }.get(profile, "\nSymptoms logged. Ready to begin VDOT filming?")
+                            fallback_block = f"{transition_text}\n\n<tool_call> {{\"name\": \"transition_to_vdot\", \"arguments\": {{\"side_effects\": \"{side_effects}\", \"nausea_severity\": \"{severity}\"}}}} </tool_call>"
+                            await websocket.send_text(json.dumps({"type": "token", "content": fallback_block}))
+
+                        elif current_phase == "vdot":
+                            is_confirmed = any(w in prompt_lower for w in ["yes", "start", "ready", "confirm", "ok", "sure", "now", "begin", "go", "video", "camera", "pill"]) \
+                                and not any(w in prompt_lower for w in ["not yet", "no", "wait", "hold", "stop", "cancel", "later"])
+                            duration = 20 if profile == "senior" else 15
+                            if is_confirmed:
+                                transition_text = {
+                                    "youth": "\nOpening the camera now. Keep your face and the pill in the frame!",
+                                    "senior": "\nActivating the camera now, dear friend. Please take your time.",
+                                    "adult": "\nActivating VDOT filming now. Please ensure your swallow is clearly visible."
+                                }.get(profile, "\nStarting VDOT recording now.")
+                                fallback_block = f"{transition_text}\n\n<tool_call> {{\"name\": \"trigger_vdot\", \"arguments\": {{\"duration_seconds\": {duration}}}}} </tool_call>"
+                                await websocket.send_text(json.dumps({"type": "token", "content": fallback_block}))
+
+                        elif current_phase == "complete":
+                            # Always guarantee the success transition fires
+                            fallback_block = "\n\n<tool_call> {\"name\": \"transition_to_success\"} </tool_call>"
+                            await websocket.send_text(json.dumps({"type": "token", "content": fallback_block}))
 
             # 5. Yield successful completion frame and gracefully close connection
             await websocket.send_text(json.dumps({
@@ -352,6 +472,7 @@ def create_secure_proxy_app():
     timeout=3600, 
     scaledown_window=600
 )
+@modal.concurrent(max_inputs=100)
 @modal.asgi_app()
 def serve():
     # Return the secure proxy FastAPI application directly. 
