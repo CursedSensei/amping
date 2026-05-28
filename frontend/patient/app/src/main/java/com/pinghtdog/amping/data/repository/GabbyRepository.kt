@@ -314,6 +314,9 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
             )
             session.send(Frame.Text(authMsg))
             
+            // WebSocket handshake succeeded! Container is up and warm. Emit connected status to VM
+            emit(ChatStreamChunk(type = "connected", content = null))
+            
             // 2. Transmit prompt to vLLM
             session.send(Frame.Text(prompt))
 

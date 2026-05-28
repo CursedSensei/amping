@@ -381,11 +381,13 @@ class SessionViewModel @Inject constructor(
             // Inject temporary streaming bubble with helpful cold start message
             val initialHistory = _uiState.value.chatHistory.toMutableList()
             streamMessageIndex = initialHistory.size
-            initialHistory.add(Message(role = "assistant", content = "💤 Gabby is sleeping... (This may take 3-5 minutes, please keep the app open)..."))
+            val sleepingMsg = "💤 Gabby is sleeping... Waking up secure server (this cold start may take 3-5 minutes, please keep the app open)..."
+            initialHistory.add(Message(role = "assistant", content = sleepingMsg))
             _uiState.update {
                 it.copy(
                     chatHistory = initialHistory,
-                    assistantTyping = false
+                    assistantTyping = false,
+                    currentSubtitleText = sleepingMsg
                 )
             }
 
@@ -399,11 +401,24 @@ class SessionViewModel @Inject constructor(
                 prompt = prompt
             ).collect { chunk ->
                 when (chunk.type) {
+                    "connected" -> {
+                        _uiState.update { state ->
+                            val updatedHistory = state.chatHistory.toMutableList()
+                            if (streamMessageIndex != -1 && streamMessageIndex < updatedHistory.size) {
+                                updatedHistory[streamMessageIndex] = Message(role = "assistant", content = "🤔 Gabby is thinking...")
+                            }
+                            state.copy(
+                                chatHistory = updatedHistory,
+                                currentSubtitleText = "🤔 Gabby is thinking..."
+                            )
+                        }
+                    }
                     "token" -> {
                         chunk.content?.let { token ->
                             if (isFirstToken) {
                                 isFirstToken = false
                                 streamingContent = ""
+                                _uiState.update { it.copy(currentSubtitleText = "") }
                             }
                             streamingContent += token
                             _uiState.update { state ->
