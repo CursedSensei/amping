@@ -43,7 +43,7 @@ fun OfflineQueueScreen(
 
     val gabbyMessage = when (uiState.activeProfile) {
         "youth" -> "Hey champion! The internet went a bit spotty, so I've saved your check-in video safely on your device! No worries at all—it will automatically sync in the background when your connection returns!"
-        "senior" -> "Don't worry, Lola dear. The connection is a bit weak right now, but your check-in video is saved safely on your device. It will upload automatically in the background when the signal gets stronger."
+        "senior" -> "Don't worry, ${uiState.firstname} dear. The connection is a bit weak right now, but your check-in video is saved safely on your device. It will upload automatically in the background when the signal gets stronger."
         else -> "Connection offline. Your VDOT encrypted video container has been safely cached into the local background sync queue. Transmission will resume automatically when internet connectivity returns."
     }
 

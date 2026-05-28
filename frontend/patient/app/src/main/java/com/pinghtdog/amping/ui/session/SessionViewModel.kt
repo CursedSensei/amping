@@ -15,6 +15,7 @@ import com.pinghtdog.amping.data.model.Message
 import com.pinghtdog.amping.data.model.SessionPhase
 import com.pinghtdog.amping.data.model.ToolCall
 import com.pinghtdog.amping.data.repository.GabbyRepository
+import com.pinghtdog.amping.data.repository.TokenManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.delay
@@ -43,6 +44,8 @@ class SessionViewModel @Inject constructor(
     private var hasLoggedVoices = false
 
     init {
+        val hasToken = TokenManager.getRefreshToken(context) != null
+        _uiState.update { it.copy(isNetworkMode = hasToken) }
         initializeTts()
         loadOfflineQueue()
         startPeriodicBackgroundSync()
@@ -235,11 +238,33 @@ class SessionViewModel @Inject constructor(
     private fun initializeGreeting() {
         viewModelScope.launch {
             _uiState.update { it.copy(assistantTyping = true) }
+            
+            if (_uiState.value.isNetworkMode) {
+                try {
+                    val profile = gabbyRepository.getPatientProfile(context)
+                    val stats = gabbyRepository.getStats(context)
+                    _uiState.update { it.copy(
+                        firstname = profile.firstname,
+                        streakCount = stats.currentStreak.toInt()
+                    ) }
+                } catch (e: Exception) {
+                    android.util.Log.e("SessionViewModel", "Failed to pre-fetch patient data for greeting", e)
+                }
+            } else {
+                val mockName = when (_uiState.value.activeProfile) {
+                    "youth" -> "Leo"
+                    "senior" -> "Lola"
+                    else -> "Patient"
+                }
+                _uiState.update { it.copy(firstname = mockName) }
+            }
+            
             delay(500)
+            val name = _uiState.value.firstname
             val welcomeMessage = when (_uiState.value.activeProfile) {
-                "youth" -> "Hey there, Leo! ready for today's super check-in? How are you feeling overall, champion? Let me know so we can log your TB pill and keep that massive streak alive!"
-                "senior" -> "Good day, Lola. It is time for our daily health check-in, my dear. How are you feeling overall today? Please tell me so we can complete your TB dose safely."
-                else -> "Welcome to your daily VDOT compliance session. Please indicate your current overall state of physical wellbeing so we may proceed with logging your TB medication ingestion."
+                "youth" -> "Hey there, $name! ready for today's super check-in? How are you feeling overall, champion? Let me know so we can log your TB pill and keep that massive streak alive!"
+                "senior" -> "Good day, $name. It is time for our daily health check-in, my dear. How are you feeling overall today? Please tell me so we can complete your TB dose safely."
+                else -> "Welcome, $name, to your daily VDOT compliance session. Please indicate your current overall state of physical wellbeing so we may proceed with logging your TB medication ingestion."
             }
             _uiState.update {
                 it.copy(
@@ -253,7 +278,8 @@ class SessionViewModel @Inject constructor(
 
     fun selectProfile(profile: String) {
         if (_uiState.value.activeProfile == profile) return
-        _uiState.value = SessionUiState(activeProfile = profile)
+        val currentNetworkMode = _uiState.value.isNetworkMode
+        _uiState.value = SessionUiState(activeProfile = profile, isNetworkMode = currentNetworkMode)
         initializeGreeting()
     }
 
@@ -267,8 +293,10 @@ class SessionViewModel @Inject constructor(
     fun fetchProductionStats() {
         viewModelScope.launch {
             try {
+                val profile = gabbyRepository.getPatientProfile(context)
                 val stats = gabbyRepository.getStats(context)
                 _uiState.update { it.copy(
+                    firstname = profile.firstname,
                     streakCount = stats.currentStreak.toInt()
                 ) }
             } catch (e: Exception) {
@@ -327,6 +355,7 @@ class SessionViewModel @Inject constructor(
     }
 
     private suspend fun runNetworkChatFlow(prompt: String) {
+        var streamMessageIndex = -1
         try {
             // Read local motivation text file
             val motivation = try {
@@ -336,16 +365,23 @@ class SessionViewModel @Inject constructor(
                 ""
             }
 
+            val phaseStr = when (_uiState.value.conversationStage) {
+                2 -> "symptoms"
+                3 -> "vdot"
+                else -> "empathy"
+            }
+
             // 1. Fetch transient Session JWT Token
             val sessionInfo = gabbyRepository.fetchSessionToken(
                 userId = _uiState.value.activeProfile,
-                motivation = if (motivation.isNotEmpty()) motivation else null
+                motivation = if (motivation.isNotEmpty()) motivation else null,
+                currentPhase = phaseStr
             )
 
-            // Inject temporary streaming bubble
+            // Inject temporary streaming bubble with helpful cold start message
             val initialHistory = _uiState.value.chatHistory.toMutableList()
-            val streamMessageIndex = initialHistory.size
-            initialHistory.add(Message(role = "assistant", content = ""))
+            streamMessageIndex = initialHistory.size
+            initialHistory.add(Message(role = "assistant", content = "💤 Gabby is sleeping... (This may take 3-5 minutes, please keep the app open)..."))
             _uiState.update {
                 it.copy(
                     chatHistory = initialHistory,
@@ -354,6 +390,7 @@ class SessionViewModel @Inject constructor(
             }
 
             var streamingContent = ""
+            var isFirstToken = true
 
             // 2. Stream tokens via Ktor WebSockets
             gabbyRepository.streamChatResponse(
@@ -364,10 +401,14 @@ class SessionViewModel @Inject constructor(
                 when (chunk.type) {
                     "token" -> {
                         chunk.content?.let { token ->
+                            if (isFirstToken) {
+                                isFirstToken = false
+                                streamingContent = ""
+                            }
                             streamingContent += token
                             _uiState.update { state ->
                                 val updatedHistory = state.chatHistory.toMutableList()
-                                if (streamMessageIndex < updatedHistory.size) {
+                                if (streamMessageIndex != -1 && streamMessageIndex < updatedHistory.size) {
                                     updatedHistory[streamMessageIndex] = Message(role = "assistant", content = streamingContent)
                                 }
                                 state.copy(chatHistory = updatedHistory)
@@ -379,7 +420,11 @@ class SessionViewModel @Inject constructor(
                     }
                     "done" -> {
                         // Finished streaming. Parse the final accumulated string for tool-call matches
-                        val finalMessageText = _uiState.value.chatHistory.getOrNull(streamMessageIndex)?.content ?: streamingContent
+                        val finalMessageText = if (streamMessageIndex != -1) {
+                            _uiState.value.chatHistory.getOrNull(streamMessageIndex)?.content ?: streamingContent
+                        } else {
+                            streamingContent
+                        }
                         val parsedResponse = parseResponse(finalMessageText)
                         handleInferenceResult(parsedResponse)
                     }
@@ -388,11 +433,17 @@ class SessionViewModel @Inject constructor(
         } catch (e: Exception) {
             val errorMessage = e.localizedMessage ?: "Failed to reach Gabby."
             android.util.Log.e("GabbyNetwork", "Error running network chat flow: $errorMessage", e)
-            _uiState.update {
-                it.copy(
+            _uiState.update { state ->
+                val updatedHistory = state.chatHistory.toMutableList()
+                if (streamMessageIndex != -1 && streamMessageIndex < updatedHistory.size) {
+                    updatedHistory[streamMessageIndex] = Message(role = "assistant", content = "⚠️ Network Connection Interrupted: $errorMessage")
+                } else {
+                    updatedHistory.add(Message(role = "assistant", content = "⚠️ Network Connection Interrupted: $errorMessage"))
+                }
+                state.copy(
                     assistantTyping = false,
                     networkError = errorMessage,
-                    chatHistory = it.chatHistory + Message(role = "assistant", content = "⚠️ Network Connection Interrupted: $errorMessage")
+                    chatHistory = updatedHistory
                 )
             }
         }
