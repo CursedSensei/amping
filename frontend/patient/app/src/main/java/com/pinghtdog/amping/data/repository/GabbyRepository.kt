@@ -65,6 +65,12 @@ interface GabbyRepository {
 @Singleton
 class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
 
+    companion object {
+        // Toggle between Render production and local development server running on host port 8000
+        private const val BASE_URL = "http://10.0.2.2:8000"
+        // private const val BASE_URL = "https://amping.onrender.com"
+    }
+
     private val jsonParser = Json { ignoreUnknownKeys = true }
 
     // Lazy initialization of standard Ktor HTTP & WebSockets client
@@ -119,7 +125,7 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
         
         try {
             val responseText = httpClient.post {
-                url("https://amping.onrender.com/api/v1/mobile/refresh-token/")
+                url("$BASE_URL/api/v1/mobile/refresh-token/")
                 contentType(ContentType.Application.Json)
                 setBody(MobileRefreshTokenPayload(refreshToken))
             }.bodyAsText()
@@ -134,7 +140,7 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
 
     override suspend fun getPatientProfile(context: Context): MobilePatientProfileResponse {
         return executeAuthenticatedRequest(context) { token ->
-            get("https://amping.onrender.com/api/v1/mobile/profile/") {
+            get("$BASE_URL/api/v1/mobile/profile/") {
                 header(HttpHeaders.Authorization, "Bearer $token")
             }
         }
@@ -142,7 +148,7 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
 
     override suspend fun getHealthcareProfile(context: Context): MobileHealthCareProviderProfileResponse {
         return executeAuthenticatedRequest(context) { token ->
-            get("https://amping.onrender.com/api/v1/mobile/healthcare-profile/") {
+            get("$BASE_URL/api/v1/mobile/healthcare-profile/") {
                 header(HttpHeaders.Authorization, "Bearer $token")
             }
         }
@@ -150,7 +156,7 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
 
     override suspend fun getStats(context: Context): MobileStatsResponse {
         return executeAuthenticatedRequest(context) { token ->
-            get("https://amping.onrender.com/api/v1/mobile/stats/") {
+            get("$BASE_URL/api/v1/mobile/stats/") {
                 header(HttpHeaders.Authorization, "Bearer $token")
             }
         }
@@ -158,7 +164,7 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
 
     override suspend fun getWeeklyAdherence(context: Context): MobileWeeklyAdherenceResponse {
         return executeAuthenticatedRequest(context) { token ->
-            get("https://amping.onrender.com/api/v1/mobile/weekly_adherence/") {
+            get("$BASE_URL/api/v1/mobile/weekly_adherence/") {
                 header(HttpHeaders.Authorization, "Bearer $token")
             }
         }
@@ -166,7 +172,7 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
 
     override suspend fun uploadSymptoms(context: Context, date: String, symptoms: List<String>): MobileUploadSymtomsResponse {
         return executeAuthenticatedRequest(context) { token ->
-            post("https://amping.onrender.com/api/v1/mobile/upload_symptoms/") {
+            post("$BASE_URL/api/v1/mobile/upload_symptoms/") {
                 header(HttpHeaders.Authorization, "Bearer $token")
                 contentType(ContentType.Application.Json)
                 setBody(MobileUploadSymtomsPayload(date = date, symptoms = symptoms))
@@ -176,7 +182,7 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
 
     override suspend fun getAdherenceVideoEndpoint(context: Context): MobileGetAdherenceVideoEndpointResponse {
         return executeAuthenticatedRequest(context) { token ->
-            get("https://amping.onrender.com/api/v1/mobile/adherence_video_endpoint/") {
+            get("$BASE_URL/api/v1/mobile/adherence_video_endpoint/") {
                 header(HttpHeaders.Authorization, "Bearer $token")
             }
         }
@@ -246,7 +252,7 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
     override suspend fun fetchSessionToken(userId: String, motivation: String?): SessionTokenResponse {
         try {
             val responseText = httpClient.post {
-                url("https://amping.onrender.com/api/chat/session/")
+                url("$BASE_URL/api/chat/session/")
                 contentType(ContentType.Application.Json)
                 setBody(mapOf("userId" to userId, "motivation" to motivation))
             }.bodyAsText()
