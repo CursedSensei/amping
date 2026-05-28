@@ -623,6 +623,7 @@ Request payload: `Mobile_UploadSymtomsPayload`
 - `symptoms` (list[string])
 
 Response: `Mobile_UploadSymtomsResponse`
+- `adherence_day_id` (int)
 - `message` (string)
 
 Route config: `@mobile_v1_router.post("/upload_symptoms/", response=Mobile_UploadSymtomsResponse)`
@@ -642,26 +643,113 @@ Example response payload:
 { "message": "Symptoms uploaded successfully" }
 ```
 
-### `GET /api/v1/mobile/adherence_video_endpoint/`
+Example response payload (updated):
 
-Return a signed/temporary upload endpoint for adherence video uploads.
+```json
+{ "adherence_day_id": 502, "message": "Symptoms uploaded successfully" }
+```
+
+### `POST /api/v1/mobile/adherence_video_endpoint/`
+
+Return a signed/temporary upload endpoint for adherence video uploads. The endpoint expects a JSON payload with `adherence_day_id` to generate an upload endpoint for that day's record. If `adherence_day_id` is omitted or zero, a record for today will be created.
 
 Possible return codes:
 - `200` — Success
+- `400` — Not allowed to upload to this adherence day record
 - `401` — Unauthorized
+
+Request payload: `Mobile_GetAdherenceVideoEndpointPayload`
+- `adherence_day_id` (int)
 
 Response: `Mobile_GetAdherenceVideoEndpointResponse`
 - `adherence_day_id` (int)
 - `video_endpoint` (string)
 
-Route config: `@mobile_v1_router.get("/adherence_video_endpoint/", response=Mobile_GetAdherenceVideoEndpointResponse)`
+Route config: `@mobile_v1_router.post("/adherence_video_endpoint/", response=Mobile_GetAdherenceVideoEndpointResponse)`
+
+Example request payload:
+
+```json
+{ "adherence_day_id": 502 }
+```
 
 Example response payload:
 
 ```json
 {
   "adherence_day_id": 502,
-  "video_endpoint": "https://upload.example.com/signed-url/abcdef"
+  "video_endpoint": "https://api.example.com/api/v1/mobile/upload_video/502/"
+}
+```
+
+### `POST /api/v1/mobile/adherence_video_status/`
+
+Update the status of an adherence video upload (success/failed).
+
+Possible return codes:
+- `200` — Status accepted
+- `400` — Bad request
+- `401` — Unauthorized
+- `404` — Adherence record not found
+
+Request payload: `Mobile_AdherenceVideoStatusPayload`
+- `adherence_day_id` (int)
+- `status` (string; one of: `success`, `failed`)
+
+Response: `Mobile_AdherenceVideoStatusResponse`
+- `message` (string)
+
+Route config: `@mobile_v1_router.post("/adherence_video_status/")`
+
+Example request payload:
+
+```json
+{
+  "adherence_day_id": 502,
+  "status": "success"
+}
+```
+
+Example response payload:
+
+```json
+{ "message": "Adherence video status updated successfully" }
+```
+
+### `POST /api/v1/mobile/upload_video/{record_id}/`
+
+Upload an adherence video file for a specific adherence record. This is a multipart/form-data endpoint that accepts a `video` file field.
+
+Possible return codes:
+- `200` — Upload successful
+- `400` — Not allowed / invalid
+- `401` — Unauthorized
+- `404` — Record not found
+
+Path params:
+- `record_id` (int): adherence record id to attach the video to
+
+Form fields:
+- `video` (file): uploaded video file
+
+Response: JSON object with upload result and gamification decision summary
+- `message` (string)
+- `gate_reached` (int|null)
+- `forgiven` (bool|null)
+- `penalty_tier` (int|null)
+- `rationale` (string)
+
+Route config: `@mobile_v1_router.post("/upload_video/{record_id}/")`
+
+Example response payload:
+
+```json
+{
+  "message": "Video uploaded successfully",
+  "gate_reached": 2,
+  "forgiven": true,
+  "penalty_tier": 1,
+  "rationale": "forgiven_due_to_video"
 }
 ```
 

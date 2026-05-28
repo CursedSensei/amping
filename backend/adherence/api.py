@@ -6,13 +6,14 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Query, File
 from ninja.files import UploadedFile
+from ninja.errors import HttpError
 
 from Amping.utils import create_routers
 from users.utils import getPatientUserByToken
 from gamification.models import PatientStats
 from gamification import utils as gamification_utils
 from .models import AdherenceDayRecord, AdherenceStatusEnum, SymptomRecord
-from .schemas import Mobile_GetAdherenceVideoEndpointResponse, Mobile_UploadSymtomsPayload, Mobile_UploadSymtomsResponse, Mobile_WeeklyAdherenceResponse, Web_AdherenceMonthRequest, Web_AdherenceMonthResponse, Web_AdherenceMonthResponse, Web_AnomalousEntriesResponse, Web_ReconcileAnomalyPayload, Web_ReconcileAnomalyResponse
+from .schemas import Mobile_AdherenceVideoStatusPayload, Mobile_AdherenceVideoStatusResponse, Mobile_GetAdherenceVideoEndpointPayload, Mobile_GetAdherenceVideoEndpointResponse, Mobile_UploadSymtomsPayload, Mobile_UploadSymtomsResponse, Mobile_WeeklyAdherenceResponse, Web_AdherenceMonthRequest, Web_AdherenceMonthResponse, Web_AdherenceMonthResponse, Web_AnomalousEntriesResponse, Web_ReconcileAnomalyPayload, Web_ReconcileAnomalyResponse
 
 
 mobile_v1_router, web_v1_router = create_routers()
@@ -123,13 +124,19 @@ def upload_symptoms(request: HttpRequest, payload: Mobile_UploadSymtomsPayload):
 
         for symptom in payload.symptoms:
             SymptomRecord.objects.create(adherence_record=adherence_record, symptom=symptom)
-    return Mobile_UploadSymtomsResponse(message="Symptoms uploaded successfully")
+    return Mobile_UploadSymtomsResponse(adherence_day_id=adherence_record.id, message="Symptoms uploaded successfully")
 
-@mobile_v1_router.get("/adherence_video_endpoint/", response=Mobile_GetAdherenceVideoEndpointResponse)
-def get_adherence_video_endpoint(request: HttpRequest):
-    # TODO: Review this
+@mobile_v1_router.post("/adherence_video_endpoint/", response=Mobile_GetAdherenceVideoEndpointResponse)
+def get_adherence_video_endpoint(request: HttpRequest, payload: Mobile_GetAdherenceVideoEndpointPayload):
     patient = getPatientUserByToken(request)
-    record, created = AdherenceDayRecord.objects.get_or_create(patient=patient, date=date.today())
+
+    if not payload.adherence_day_id:
+        payload.adherence_day_id = 0
+
+    record, created = AdherenceDayRecord.objects.get_or_create(patient=patient, id=payload.adherence_day_id, date=date.today())
+
+    if record.status != AdherenceStatusEnum.TECHNICAL_MISS:
+        raise HttpError(400, "Not allowed to upload to this adherence day record")
 
     # Build absolute URI dynamically to support both local and production environments
     base_uri = request.build_absolute_uri('/').rstrip('/')
@@ -138,81 +145,97 @@ def get_adherence_video_endpoint(request: HttpRequest):
         video_endpoint=f"{base_uri}/api/v1/mobile/upload_video/{record.id}/"
     )
 
-@mobile_v1_router.post("/upload_video/{record_id}/")
-def upload_video(request: HttpRequest, record_id: int, video: UploadedFile = File(...)):
+@mobile_v1_router.post("/adherence_video_status/")
+def adherence_video_status(request: HttpRequest, payload: Mobile_AdherenceVideoStatusPayload):
     patient = getPatientUserByToken(request)
-    record = get_object_or_404(AdherenceDayRecord, id=record_id, patient=patient)
+    record = AdherenceDayRecord.objects.filter(patient=patient, id=payload.adherence_day_id).first()
+    if not record:
+        raise HttpError(404, "Adherence record not found")
 
-    import os
-    from django.conf import settings
-
-    media_dir = os.path.join(settings.BASE_DIR, 'media', 'recordings')
-    os.makedirs(media_dir, exist_ok=True)
-
-    file_path = os.path.join(media_dir, f"video_{record_id}_{video.name}")
-    with open(file_path, 'wb') as f:
-        for chunk in video.chunks():
-            f.write(chunk)
-
-    decision = None
-    with transaction.atomic():
-        record.video_url = f"/media/recordings/video_{record_id}_{video.name}"
+    if payload.status == Mobile_AdherenceVideoStatusPayload.AdherenceVideoStatusEnum.SUCCESS:
         record.status = AdherenceStatusEnum.APP_RECORDED
         record.save()
+        return Mobile_AdherenceVideoStatusResponse(message="Adherence video status updated successfully")
+    else:
+        return Mobile_AdherenceVideoStatusResponse(message="Adherence video marked as failed.")
 
-        patient_stats = get_object_or_404(PatientStats, patient=patient)
-        now = timezone.localtime()
-        today = now.date()
-        dose_date = record.dose_date or today
+# Ignore this Clanker output
 
-        # Placeholder schedule: midnight local on the dose's calendar day. Replace
-        # with a real prescription schedule field when one exists.
-        scheduled_dose_time = timezone.make_aware(datetime.combine(dose_date, time.min))
+# @mobile_v1_router.post("/upload_video/{record_id}/")
+# def upload_video(request: HttpRequest, record_id: int, video: UploadedFile = File(...)):
+#     patient = getPatientUserByToken(request)
+#     record = get_object_or_404(AdherenceDayRecord, id=record_id, patient=patient)
 
-        gamification_utils.reset_monthly_quota_if_new_period(patient_stats, today)
-        patient_stats.current_day = gamification_utils.current_day_of_regimen(patient_stats, today)
-        patient_stats.save(update_fields=["current_day"])
-        gamification_utils.sync_month3_protected(patient_stats)
+#     import os
+#     from django.conf import settings
 
-        lateness_hours = (now - scheduled_dose_time).total_seconds() / 3600.0
-        if lateness_hours > 0:
-            miss_dates = gamification_utils.get_miss_dates_past_7d(patient, today)
-            # Include the current dose as the latest miss candidate for matrix evaluation.
-            miss_dates_for_eval = miss_dates + [dose_date] if dose_date not in miss_dates else miss_dates
+#     media_dir = os.path.join(settings.BASE_DIR, 'media', 'recordings')
+#     os.makedirs(media_dir, exist_ok=True)
 
-            decision = gamification_utils.evaluate(
-                patient_id=patient.id,
-                birthyear=patient.birthyear,
-                now=now,
-                scheduled_dose_time=scheduled_dose_time,
-                dose_date=dose_date,
-                current_day_of_regimen=patient_stats.current_day,
-                miss_dates_past_7d=miss_dates_for_eval,
-                last_relapse_date=gamification_utils.get_last_relapse_date(patient, today),
-                prior_relapses_30d=gamification_utils.get_prior_relapses_30d(patient, today),
-                quota_used_this_month=patient_stats.forgiveness_quota_used_this_month,
-            )
-            gamification_utils.apply_decision(
-                decision=decision,
-                patient_stats=patient_stats,
-                adherence_record=record,
-                today=today,
-            )
+#     file_path = os.path.join(media_dir, f"video_{record_id}_{video.name}")
+#     with open(file_path, 'wb') as f:
+#         for chunk in video.chunks():
+#             f.write(chunk)
 
-        # Streak increments only when the dose isn't being penalised. Gate 1/Gate 2
-        # both count as a successful dose for streak purposes; Gate 3 doesn't.
-        penalised = decision is not None and not decision.forgiven
-        if not penalised:
-            patient_stats.current_streak += 1
-            if patient_stats.current_streak > patient_stats.best_streak:
-                patient_stats.best_streak = patient_stats.current_streak
-            patient_stats.save(update_fields=["current_streak", "best_streak"])
+#     decision = None
+#     with transaction.atomic():
+#         record.video_url = f"/media/recordings/video_{record_id}_{video.name}"
+#         record.status = AdherenceStatusEnum.APP_RECORDED
+#         record.save()
 
-    return {
-        "message": "Video uploaded successfully",
-        "gate_reached": decision.gate_reached.value if decision else None,
-        "forgiven": decision.forgiven if decision else None,
-        "penalty_tier": decision.penalty_tier if decision else None,
-        "rationale": decision.rationale if decision else "on-time",
-    }
+#         patient_stats = get_object_or_404(PatientStats, patient=patient)
+#         now = timezone.localtime()
+#         today = now.date()
+#         dose_date = record.dose_date or today
+
+#         # Placeholder schedule: midnight local on the dose's calendar day. Replace
+#         # with a real prescription schedule field when one exists.
+#         scheduled_dose_time = timezone.make_aware(datetime.combine(dose_date, time.min))
+
+#         gamification_utils.reset_monthly_quota_if_new_period(patient_stats, today)
+#         patient_stats.current_day = gamification_utils.current_day_of_regimen(patient_stats, today)
+#         patient_stats.save(update_fields=["current_day"])
+#         gamification_utils.sync_month3_protected(patient_stats)
+
+#         lateness_hours = (now - scheduled_dose_time).total_seconds() / 3600.0
+#         if lateness_hours > 0:
+#             miss_dates = gamification_utils.get_miss_dates_past_7d(patient, today)
+#             # Include the current dose as the latest miss candidate for matrix evaluation.
+#             miss_dates_for_eval = miss_dates + [dose_date] if dose_date not in miss_dates else miss_dates
+
+#             decision = gamification_utils.evaluate(
+#                 patient_id=patient.id,
+#                 birthyear=patient.birthyear,
+#                 now=now,
+#                 scheduled_dose_time=scheduled_dose_time,
+#                 dose_date=dose_date,
+#                 current_day_of_regimen=patient_stats.current_day,
+#                 miss_dates_past_7d=miss_dates_for_eval,
+#                 last_relapse_date=gamification_utils.get_last_relapse_date(patient, today),
+#                 prior_relapses_30d=gamification_utils.get_prior_relapses_30d(patient, today),
+#                 quota_used_this_month=patient_stats.forgiveness_quota_used_this_month,
+#             )
+#             gamification_utils.apply_decision(
+#                 decision=decision,
+#                 patient_stats=patient_stats,
+#                 adherence_record=record,
+#                 today=today,
+#             )
+
+#         # Streak increments only when the dose isn't being penalised. Gate 1/Gate 2
+#         # both count as a successful dose for streak purposes; Gate 3 doesn't.
+#         penalised = decision is not None and not decision.forgiven
+#         if not penalised:
+#             patient_stats.current_streak += 1
+#             if patient_stats.current_streak > patient_stats.best_streak:
+#                 patient_stats.best_streak = patient_stats.current_streak
+#             patient_stats.save(update_fields=["current_streak", "best_streak"])
+
+#     return {
+#         "message": "Video uploaded successfully",
+#         "gate_reached": decision.gate_reached.value if decision else None,
+#         "forgiven": decision.forgiven if decision else None,
+#         "penalty_tier": decision.penalty_tier if decision else None,
+#         "rationale": decision.rationale if decision else "on-time",
+#     }
 

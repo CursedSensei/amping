@@ -1,5 +1,7 @@
 
 
+from enum import Enum
+
 from Amping.schemas import ApiSchema
 from datetime import date
 
@@ -74,11 +76,25 @@ class Mobile_UploadSymtomsPayload(ApiSchema):
     symptoms: list[str]
 
 class Mobile_UploadSymtomsResponse(ApiSchema):
+    adherence_day_id: int
     message: str
 
+class Mobile_GetAdherenceVideoEndpointPayload(ApiSchema):
+    adherence_day_id: int | None
+
 class Mobile_GetAdherenceVideoEndpointResponse(ApiSchema):
-    adherence_day_id: int
     video_endpoint: str
+
+class Mobile_AdherenceVideoStatusPayload(ApiSchema):
+    class AdherenceVideoStatusEnum(str, Enum):
+        SUCCESS = "success"
+        FAILED = "failed"
+
+    adherence_day_id: int
+    status: AdherenceVideoStatusEnum
+
+class Mobile_AdherenceVideoStatusResponse(ApiSchema):
+    message: str
 
 __ALL__ = [
     "Web_PDCTrendResponse",
@@ -89,6 +105,9 @@ __ALL__ = [
     "Web_ReconcileAnomalyResponse",
     "Mobile_WeeklyAdherenceResponse",
     "Mobile_UploadSymtomsResponse",
+    "Mobile_GetAdherenceVideoEndpointPayload",
     "Mobile_GetAdherenceVideoEndpointResponse",
-    "Mobile_UploadSymtomsPayload"
+    "Mobile_UploadSymtomsPayload",
+    "Mobile_AdherenceVideoStatusPayload",
+    "Mobile_AdherenceVideoStatusResponse",
 ]
