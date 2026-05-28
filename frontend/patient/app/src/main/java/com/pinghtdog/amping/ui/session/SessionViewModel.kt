@@ -421,10 +421,22 @@ class SessionViewModel @Inject constructor(
                                 _uiState.update { it.copy(currentSubtitleText = "") }
                             }
                             streamingContent += token
+                            
+                            val displayContent = if (streamingContent.contains("<think>")) {
+                                if (streamingContent.contains("</think>")) {
+                                    streamingContent.substringAfter("</think>").trim()
+                                } else {
+                                    "🤔 Gabby is thinking..."
+                                }
+                            } else {
+                                streamingContent
+                            }
+                            
                             _uiState.update { state ->
                                 val updatedHistory = state.chatHistory.toMutableList()
                                 if (streamMessageIndex != -1 && streamMessageIndex < updatedHistory.size) {
-                                    updatedHistory[streamMessageIndex] = Message(role = "assistant", content = streamingContent)
+                                    val cleanDisplay = displayContent.replace(Regex("<tool_call>[\\s\\S]*?<\\/tool_call>"), "").trim()
+                                    updatedHistory[streamMessageIndex] = Message(role = "assistant", content = cleanDisplay)
                                 }
                                 state.copy(chatHistory = updatedHistory)
                             }
@@ -532,6 +544,19 @@ class SessionViewModel @Inject constructor(
 
     private fun parseResponse(rawText: String): Message {
         val toolCallRegex = Regex("""<tool_call>([\s\S]*?)<\/tool_call>""")
+        val thinkRegex = Regex("""<think>([\s\S]*?)<\/think>""")
+
+        // Log raw response and any extracted thinking block to Android Logcat
+        android.util.Log.d("LLM_Output", "--- RAW LLM RESPONSE RECEIVED ---")
+        android.util.Log.d("LLM_Output", rawText)
+
+        val thinkMatch = thinkRegex.find(rawText)
+        if (thinkMatch != null) {
+            val thinkingBlock = thinkMatch.groupValues[1].trim()
+            android.util.Log.d("LLM_Output", "--- EXTRACTED THINKING BLOCK ---")
+            android.util.Log.d("LLM_Output", thinkingBlock)
+        }
+
         val match = toolCallRegex.find(rawText)
         var parsedToolCall: ToolCall? = null
 
@@ -563,7 +588,14 @@ class SessionViewModel @Inject constructor(
             }
         }
 
-        val cleanContent = rawText.replace(toolCallRegex, "").trim()
+        // Clean out both think tags and tool call tags from final displayed content
+        val contentWithoutThink = rawText.replace(thinkRegex, "").trim()
+        val cleanContent = contentWithoutThink.replace(toolCallRegex, "").trim()
+
+        android.util.Log.d("LLM_Output", "--- FINAL CLEANED RESPONSE CONTENT ---")
+        android.util.Log.d("LLM_Output", cleanContent)
+        android.util.Log.d("LLM_Output", "--------------------------------------")
+
         return Message(
             role = "assistant",
             content = cleanContent,
