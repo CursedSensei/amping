@@ -367,23 +367,48 @@ async def chat_endpoint(payload: ChatPayload):
     if current_phase == "empathy":
         phase_instructions = (
             "We are currently in Phase 1: Empathetic Check-up.\n"
-            "Your goal is to greet the patient warmly, show genuine clinical empathy, and immediately steer them towards their health check-in.\n"
-            "CRITICAL: Do NOT ask open-ended questions like 'How can I assist you in feeling better today?', and do NOT ask how they are feeling right now.\n"
-            "Instead, steer them directly to log their symptoms. You MUST append a structured tool call strictly in this format at the very end of your response to transition:\n"
-            "<tool_call> {\"name\": \"show_symptom_checklist\"} </tool_call>\n"
-            "EXAMPLE RESPONSE:\n"
-            "I am so glad to hear that you are doing well today. Let us check in on your physical symptoms right now to keep your treatment safe.\n"
-            "<tool_call> {\"name\": \"show_symptom_checklist\"} </tool_call>"
+            "Your goal is to greet the patient warmly and guide them toward their daily health check-in.\n"
+            "\n"
+            "RULE A — EMOTIONAL DISCLOSURE: If the patient expresses sadness, loneliness, anxiety, worry, fear, grief, or any emotional difficulty:\n"
+            "  - Respond with genuine, warm empathy. Acknowledge what they shared specifically — do not be generic.\n"
+            "  - Ask ONE caring follow-up question so they feel heard (e.g. 'What has been weighing on you?' or 'Would you like to tell me more?').\n"
+            "  - Do NOT emit show_symptom_checklist in this response.\n"
+            "  - On your NEXT response after they reply, warmly bridge to the check-in and emit show_symptom_checklist.\n"
+            "\n"
+            "RULE B — GREETING OR NEUTRAL MESSAGE: If the patient's message is a greeting or a neutral/positive statement:\n"
+            "  - Do NOT ask how they are feeling or use open-ended questions.\n"
+            "  - Greet warmly and steer them directly to the symptom log.\n"
+            "  - You MUST emit show_symptom_checklist at the very end of your response.\n"
+            "\n"
+            "EXAMPLE — Emotional disclosure (Rule A, no tool call):\n"
+            "Patient: 'I am feeling sad today.'\n"
+            "Gabby: 'I am so sorry to hear that. You do not have to carry that alone. What has been weighing on your heart?'\n"
+            "\n"
+            "EXAMPLE — Bridge after emotional exchange (Rule A second turn, with tool call):\n"
+            "Patient: 'I just miss my family a lot.'\n"
+            "Gabby: 'I hear you. That kind of longing is real and it matters. While I hold that with you, let us also take care of your body today.\n"
+            "<tool_call> {\"name\": \"show_symptom_checklist\"} </tool_call>'\n"
+            "\n"
+            "EXAMPLE — Neutral greeting (Rule B, with tool call):\n"
+            "Patient: 'Hi Gabby'\n"
+            "Gabby: 'Hello! I am glad you are here. Let us take care of your health today.\n"
+            "<tool_call> {\"name\": \"show_symptom_checklist\"} </tool_call>'"
         )
     elif current_phase == "symptoms":
         phase_instructions = (
             "We are currently in Phase 2: Symptom Logging.\n"
-            "Empathetically greet them and ask if they are experiencing any medication side effects "
-            "(such as nausea, vomiting, joint pain, fatigue, or dark urine).\n"
-            "CRITICAL: Do NOT ask open-ended questions. Steer the patient directly to choose their side-effects so we can progress to their daily VDOT filming.\n"
-            "Once they respond with their physical status, you MUST generate a structured tool call strictly in this format at the end of your response to transition:\n"
-            "<tool_call> {\"name\": \"transition_to_vdot\", \"arguments\": {\"side_effects\": \"nausea and fatigue\", \"nausea_severity\": \"Mild\"}} </tool_call>\n"
-            "Valid nausea_severity values: 'None', 'Mild', 'Severe'."
+            "The patient has ALREADY submitted their symptom checklist. Their reported symptoms are in their message (e.g. 'Symptoms reported: nausea (None severity).' or 'Symptoms reported: no side effects.').\n"
+            "CRITICAL: The checklist is ALREADY COMPLETE. Do NOT ask them to fill out a checklist or choose symptoms again.\n"
+            "Read their reported symptoms carefully. Acknowledge them with brief, genuine empathy (note the specific symptom if present, or affirm they are clear). Then immediately generate the transition_to_vdot tool call.\n"
+            "Extract side_effects and nausea_severity from their message. Valid nausea_severity values: 'None', 'Mild', 'Severe'.\n"
+            "You MUST generate a structured tool call strictly in this format at the very end of your response:\n"
+            "<tool_call> {\"name\": \"transition_to_vdot\", \"arguments\": {\"side_effects\": \"nausea\", \"nausea_severity\": \"None\"}} </tool_call>\n"
+            "EXAMPLE RESPONSE (patient reported nausea, None severity):\n"
+            "Noted. Nausea logged with no severe intensity today. Please drink some water. Are you ready to record your medication video now?\n"
+            "<tool_call> {\"name\": \"transition_to_vdot\", \"arguments\": {\"side_effects\": \"nausea\", \"nausea_severity\": \"None\"}} </tool_call>\n"
+            "EXAMPLE RESPONSE (no side effects reported):\n"
+            "Wonderful. No side effects noted today. Are you ready to begin your VDOT recording?\n"
+            "<tool_call> {\"name\": \"transition_to_vdot\", \"arguments\": {\"side_effects\": \"none\", \"nausea_severity\": \"None\"}} </tool_call>"
         )
     else: # vdot
         phase_instructions = (
@@ -442,11 +467,18 @@ async def chat_endpoint(payload: ChatPayload):
                 # we programmatically append the correct tool call based on current_phase & user input!
                 if "<tool_call>" not in assistant_text:
                     if current_phase == "empathy":
-                        # Only programmatically transition to symptoms if the user actually reported their mood
-                        # (i.e. their last message is not just a greeting or start message)
+                        # Only programmatically inject the checklist if the message is not a
+                        # greeting and not an emotional disclosure. Emotional messages get one
+                        # empathetic follow-up turn before the checklist is shown.
                         is_greeting = any(w in last_user_words for w in ["hello", "hi", "hey", "gabby", "yo", "sup", "morning", "afternoon", "evening", "greetings"]) or last_user_message.strip() in ["", "?", "hi!", "hello!"]
-                        if not is_greeting:
-                            # Append the tool call and a steering symptom prompt checklist
+                        emotional_keywords = [
+                            "sad", "depress", "anxious", "anxiety", "worried", "worry",
+                            "scared", "afraid", "lonely", "stressed", "stress", "overwhelm",
+                            "angry", "upset", "unhappy", "crying", "struggling", "nervous",
+                            "frustrated", "heartbroken", "grieving", "grief", "miserable"
+                        ]
+                        is_emotional = any(kw in last_user_message for kw in emotional_keywords)
+                        if not is_greeting and not is_emotional:
                             transition_question = {
                                 "youth": "\nLet us check your body today. Please fill out the symptom checklist below.",
                                 "senior": "\nLet us review your body today, dear friend. Please check any symptoms you are feeling in the checklist card below.",
