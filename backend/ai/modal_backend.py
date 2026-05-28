@@ -352,6 +352,7 @@ def create_secure_proxy_app():
     timeout=3600, 
     scaledown_window=600
 )
+@modal.concurrent(max_inputs=100)
 @modal.asgi_app()
 def serve():
     # Return the secure proxy FastAPI application directly. 
