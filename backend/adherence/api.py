@@ -130,16 +130,22 @@ def upload_symptoms(request: HttpRequest, payload: Mobile_UploadSymtomsPayload):
 @mobile_v1_router.post("/adherence_video_endpoint/", response=Mobile_GetAdherenceVideoEndpointResponse)
 def get_adherence_video_endpoint(request: HttpRequest, payload: Mobile_GetAdherenceVideoEndpointPayload):
     patient = getPatientUserByToken(request)
+    record = None
 
     if not payload.adherence_day_id:
-        payload.adherence_day_id = 0
-
-    record, created = AdherenceDayRecord.objects.get_or_create(patient=patient, id=payload.adherence_day_id, date=date.today())
+        record = AdherenceDayRecord.objects.get_or_create(patient=patient, date=date.today())
+    else:
+        record = AdherenceDayRecord.objects.get(patient=patient, id=payload.adherence_day_id)
+        if not record:
+            record = AdherenceDayRecord.objects.get_or_create(patient=patient, date=date.today())
 
     if record.status != AdherenceStatusEnum.TECHNICAL_MISS:
         raise HttpError(400, "Not allowed to upload to this adherence day record")
 
     url = create_signed_url(patient_id=patient.id, record_id=record.id)
+
+    record.video_endpoint = url
+    record.save(update_fields=["video_endpoint"])
 
     return Mobile_GetAdherenceVideoEndpointResponse(
         adherence_day_id=record.id,
@@ -156,7 +162,7 @@ def adherence_video_status(request: HttpRequest, payload: Mobile_AdherenceVideoS
         raise HttpError(400, "Not allowed to update this adherence day record")
 
     if payload.status == Mobile_AdherenceVideoStatusPayload.AdherenceVideoStatusEnum.SUCCESS:
-        if not verify_video_upload(payload.video_endpoint):
+        if not record.video_endpoint or not verify_video_upload(record.video_endpoint):
             return Mobile_AdherenceVideoStatusResponse(message="Unable to verify video upload. Marked as failed.")
 
         record.status = AdherenceStatusEnum.APP_RECORDED
