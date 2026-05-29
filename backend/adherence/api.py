@@ -162,8 +162,8 @@ def adherence_video_status(request: HttpRequest, payload: Mobile_AdherenceVideoS
         raise HttpError(400, "Not allowed to update this adherence day record")
 
     if payload.status == Mobile_AdherenceVideoStatusPayload.AdherenceVideoStatusEnum.SUCCESS:
-        if not record.video_endpoint:# or not verify_video_upload(record.video_endpoint):
-            return Mobile_AdherenceVideoStatusResponse(message="Unable to verify video upload. Marked as failed.")
+        # if not record.video_endpoint or not verify_video_upload(record.video_endpoint):
+        #     return Mobile_AdherenceVideoStatusResponse(message="Unable to verify video upload. Marked as failed.")
 
         record.status = AdherenceStatusEnum.APP_RECORDED
         record.video_url = get_public_video_url(patient.id, record.id)
