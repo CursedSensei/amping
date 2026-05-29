@@ -16,7 +16,7 @@
 
 ## Run Locally
 
-From `/tmp/workspace/CursedSensei/amping/backend`:
+From `backend`:
 
 1. Apply migrations:
    - `python manage.py migrate`

@@ -19,16 +19,16 @@ Core capabilities:
 - `frontend/patient/` — Android (Kotlin) patient application
 
 Additional docs:
-- `/tmp/workspace/CursedSensei/amping/backend/README.md`
-- `/tmp/workspace/CursedSensei/amping/frontend/README.md`
+- `backend/README.md`
+- `frontend/README.md`
 
 ## Quick Start
 
 ### Backend
-See `/tmp/workspace/CursedSensei/amping/backend/README.md` for environment setup, migrations, and local run instructions.
+See `backend/README.md` for environment setup, migrations, and local run instructions.
 
 ### Frontend
-See `/tmp/workspace/CursedSensei/amping/frontend/README.md` for dashboard and Android app setup instructions.
+See `frontend/README.md` for dashboard and Android app setup instructions.
 
 ## Team
 

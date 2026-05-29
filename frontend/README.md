@@ -7,7 +7,7 @@ This directory contains two frontend clients:
 
 ## Healthcare Professional Dashboard (`hc_professional`)
 
-From `/tmp/workspace/CursedSensei/amping/frontend/hc_professional`:
+From `frontend/hc_professional`:
 
 1. Install dependencies:
    - `npm ci`
@@ -24,7 +24,7 @@ API base behavior:
 
 ## Patient App (`patient`)
 
-From `/tmp/workspace/CursedSensei/amping/frontend/patient`:
+From `frontend/patient`:
 
 1. Build / test with Gradle wrapper:
    - `./gradlew test`
