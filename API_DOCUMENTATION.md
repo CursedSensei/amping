@@ -716,43 +716,6 @@ Example response payload:
 { "message": "Adherence video status updated successfully" }
 ```
 
-### `POST /api/v1/mobile/upload_video/{record_id}/`
-
-Upload an adherence video file for a specific adherence record. This is a multipart/form-data endpoint that accepts a `video` file field.
-
-Possible return codes:
-- `200` — Upload successful
-- `400` — Not allowed / invalid
-- `401` — Unauthorized
-- `404` — Record not found
-
-Path params:
-- `record_id` (int): adherence record id to attach the video to
-
-Form fields:
-- `video` (file): uploaded video file
-
-Response: JSON object with upload result and gamification decision summary
-- `message` (string)
-- `gate_reached` (int|null)
-- `forgiven` (bool|null)
-- `penalty_tier` (int|null)
-- `rationale` (string)
-
-Route config: `@mobile_v1_router.post("/upload_video/{record_id}/")`
-
-Example response payload:
-
-```json
-{
-  "message": "Video uploaded successfully",
-  "gate_reached": 2,
-  "forgiven": true,
-  "penalty_tier": 1,
-  "rationale": "forgiven_due_to_video"
-}
-```
-
 ## Route Registration Notes
 
 - All sub-routers are mounted under `/api/v1/` in [backend/Amping/urls.py](backend/Amping/urls.py) and wired in [backend/Amping/api.py](backend/Amping/api.py) via `api_v1.add_router(...)` for `mobile/` and `web/` groups.

@@ -37,7 +37,7 @@ def get_adherence_month(request: HttpRequest, patient_id: int, filter: Query[Web
                 date=record.date,
                 status=record.status,
                 symptoms=[symptom.symptom for symptom in SymptomRecord.objects.filter(adherence_record=record)],
-                video_link= get_public_video_url(patient_id, record.id) if record.video_url else None
+                video_link= record.video_url
             )
             for record in adherence_days
         ]
@@ -139,7 +139,7 @@ def get_adherence_video_endpoint(request: HttpRequest, payload: Mobile_GetAdhere
     if record.status != AdherenceStatusEnum.TECHNICAL_MISS:
         raise HttpError(400, "Not allowed to upload to this adherence day record")
 
-    url = create_signed_url(video_key=f"patient_{patient.id}-adherence_{record.id}.mp4")
+    url = create_signed_url(patient_id=patient.id, record_id=record.id)
 
     return Mobile_GetAdherenceVideoEndpointResponse(
         adherence_day_id=record.id,
@@ -160,6 +160,7 @@ def adherence_video_status(request: HttpRequest, payload: Mobile_AdherenceVideoS
             return Mobile_AdherenceVideoStatusResponse(message="Unable to verify video upload. Marked as failed.")
 
         record.status = AdherenceStatusEnum.APP_RECORDED
+        record.video_url = get_public_video_url(patient.id, record.id)
         record.save()
         return Mobile_AdherenceVideoStatusResponse(message="Adherence video status updated successfully")
     else:
