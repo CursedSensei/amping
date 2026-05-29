@@ -3,20 +3,20 @@
  * local types used by pages and components.
  */
 
-import { AdherenceStatusEnum } from '../api_types/Web_AdherenceMonthResponse';
 import type { WebAdherenceDayEntry } from '../api_types/Web_AdherenceMonthResponse';
-import type { WebPatientListItem } from '../api_types/Web_PatientListResponse';
+import { AdherenceStatusEnum } from '../api_types/Web_AdherenceMonthResponse';
 import type { WebAnomalousEntry } from '../api_types/Web_AnomalousEntriesResponse';
 import type { WebPenaltyEvent } from '../api_types/Web_GamificationResponse';
+import type { WebPatientListItem } from '../api_types/Web_PatientListResponse';
 import type {
-  RiskTier,
-  DayStatus,
-  HeatmapDay,
-  AnomalousEntry,
-  PenaltyEvent,
-  PDCPoint,
-  WeekDay,
-  Patient,
+    AnomalousEntry,
+    DayStatus,
+    HeatmapDay,
+    Patient,
+    PDCPoint,
+    PenaltyEvent,
+    RiskTier,
+    WeekDay,
 } from '../data/mockData';
 
 // ─── Status maps ─────────────────────────────────────────────────────────────
@@ -85,13 +85,11 @@ export function buildHeatmapFromApi(
       result.push({
         date: d,
         status: toAdherenceStatus(entry.status),
-        note:
-          entry.symptoms && entry.symptoms.length > 0
-            ? entry.symptoms.join(', ')
-            : undefined,
+        symptoms: entry.symptoms ?? [],
+        videoLink: entry.video_link ?? null,
       });
     } else {
-      result.push({ date: d, status: 'app-recorded' });
+      result.push({ date: d, status: 'app-recorded', symptoms: [], videoLink: null });
     }
   }
 

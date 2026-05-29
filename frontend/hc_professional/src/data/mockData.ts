@@ -36,6 +36,8 @@ export interface HeatmapDay {
   date: number | null; // null = padding
   status: DayStatus;
   note?: string;
+  symptoms?: string[];
+  videoLink?: string | null;
 }
 
 export interface Patient {

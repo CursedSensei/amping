@@ -1,3 +1,4 @@
+import gsap from 'gsap';
 import {
     AlertCircle,
     ArrowLeft,
@@ -24,11 +25,11 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
-import gsap from 'gsap';
 import HeartQuota from '../components/HeartQuota';
 import { usePatients } from '../context/PatientContext';
 import { type DayStatus, type PDCPoint, type PenaltyEvent } from '../data/mockData';
 import { buildHeatmapFromApi, toPenaltyEvent } from '../services/adapters';
+import { decryptVideoObjectUrl, revokeVideoObjectUrl } from '../utils/videoDecrypt';
 
 // ─── Local grid cell type ─────────────────────────────────────────────────
 
@@ -38,6 +39,8 @@ interface GridCell {
   date: number;
   status: CellStatus;
   note?: string;
+  symptoms?: string[];
+  videoLink?: string | null;
 }
 
 // ─── Status style maps ──────────────────────────
@@ -87,13 +90,13 @@ function buildGridCells(
   year: number,
   month: number,
   daysInMonth: number,
-  classify: (day: number) => { status: CellStatus; note?: string },
+  classify: (day: number) => { status: CellStatus; note?: string; symptoms?: string[]; videoLink?: string | null },
 ): (null | GridCell)[] {
   const col = monthStartCol(year, month);
   const cells: (null | GridCell)[] = Array<null>(col).fill(null);
   for (let d = 1; d <= daysInMonth; d++) {
-    const { status, note } = classify(d);
-    cells.push({ date: d, status, note });
+    const { status, note, symptoms, videoLink } = classify(d);
+    cells.push({ date: d, status, note, symptoms, videoLink });
   }
   return cells;
 }
@@ -125,9 +128,63 @@ function CalCell({ cell, selected, onClick }: { cell: GridCell; selected: boolea
 
 // ─── Day Detail Panel ──────────────────────────────────────────────────────
 
-function DayDetailPanel({ cell, month, onClose }: { cell: GridCell; month: string; onClose: () => void; }) {
+function DayDetailPanel({ cell, month, videoUrl, onClose }: { cell: GridCell; month: string; videoUrl?: string | null; onClose: () => void; }) {
   const status = cell.status as DayStatus;
   const [mo, yr] = month.split(' ');
+  const [videoSrc, setVideoSrc] = useState('');
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoError, setVideoError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadVideo() {
+      if (!videoUrl) {
+        setVideoSrc('');
+        setVideoLoading(false);
+        setVideoError('');
+        return;
+      }
+
+      setVideoLoading(true);
+      setVideoError('');
+
+      try {
+        const objectUrl = await decryptVideoObjectUrl(videoUrl);
+        if (!active) {
+          revokeVideoObjectUrl(objectUrl);
+          return;
+        }
+
+        setVideoSrc((currentSrc) => {
+          if (currentSrc) {
+            revokeVideoObjectUrl(currentSrc);
+          }
+          return objectUrl;
+        });
+      } catch (loadError) {
+        if (active) {
+          setVideoError(loadError instanceof Error ? loadError.message : 'Unable to load video for this day.');
+        }
+      } finally {
+        if (active) {
+          setVideoLoading(false);
+        }
+      }
+    }
+
+    void loadVideo();
+
+    return () => {
+      active = false;
+      setVideoSrc((currentSrc) => {
+        if (currentSrc) {
+          revokeVideoObjectUrl(currentSrc);
+        }
+        return '';
+      });
+    };
+  }, [videoUrl]);
 
   return (
     <div className={`animate-in slide-in-from-bottom-2 fade-in border rounded-2xl p-5 ${STATUS_BG[status]} flex items-start gap-4 shadow-sm`}>
@@ -143,9 +200,60 @@ function DayDetailPanel({ cell, month, onClose }: { cell: GridCell; month: strin
             {mo} {cell.date}, {yr}
           </span>
         </div>
-        <p className={`text-sm font-medium leading-relaxed ${STATUS_TEXT[status]} opacity-90`}>
-          {cell.note ?? 'Video dose log submitted via Gabby and verified by upload.'}
-        </p>
+        {cell.note && (
+          <p className={`text-sm font-medium leading-relaxed ${STATUS_TEXT[status]} opacity-90`}>
+            {cell.note}
+          </p>
+        )}
+        {status === 'app-recorded' && (
+          <p className="mt-3 text-sm font-medium leading-relaxed text-slate-600 opacity-90">
+            Video dose log submitted via Gabby and verified by upload.
+          </p>
+        )}
+        {/* {cell.symptoms && cell.symptoms.length > 0 && (
+          <div className="mt-3 rounded-xl border border-white/50 bg-white/60 px-3 py-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Symptoms</p>
+            <p className={`text-sm font-medium leading-relaxed ${STATUS_TEXT[status]} opacity-90`}>
+              {cell.symptoms.join(', ')}
+            </p>
+          </div>
+        )} */}
+        {cell.symptoms && cell.symptoms.length > 0 && (
+          <div className="mt-3 py-2 flex gap-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mt-1">Symptoms:</p>
+            <p className={`text-sm font-medium leading-relaxed ${STATUS_TEXT[status]} opacity-90`}>
+              {cell.symptoms.join(', ')}
+            </p>
+          </div>
+        )}
+        {videoUrl && (
+          <div className="mt-4 overflow-hidden rounded-2xl border border-white/60 bg-slate-950/95">
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">Video Proof</span>
+              <span className="text-[10px] font-bold text-slate-400">{videoLoading ? 'Decrypting…' : videoError ? 'Failed' : 'Ready'}</span>
+            </div>
+            {videoError ? (
+              <div className="px-4 py-3 text-sm font-medium text-rose-200">
+                {videoError}
+              </div>
+            ) : (
+              <>
+                <video
+                  className="h-auto w-full"
+                  controls
+                  playsInline
+                  preload="metadata"
+                  src={videoSrc || undefined}
+                />
+                {videoLoading && (
+                  <div className="px-4 py-3 text-sm text-slate-300">
+                    Loading decrypted video...
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
       <button onClick={onClose} className="text-slate-400 hover:text-slate-700 transition-colors shrink-0 bg-white/50 hover:bg-white p-1.5 rounded-full">
         <X size={16} />
@@ -358,13 +466,16 @@ export default function UnifiedAdherenceRecord() {
   const month0 = currentDate.getMonth();
   const daysInMonth = new Date(calendarYear, month0 + 1, 0).getDate();
   const displayMonthStr = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const selectedVideoUrl = selectedCell && adherence
+    ? adherence.adherence_days.find((day) => new Date(day.date).getDate() === selectedCell.date)?.video_link ?? null
+    : null;
 
-  const overrideMap = new Map<number, { status: DayStatus; note?: string }>();
+  const overrideMap = new Map<number, { status: DayStatus; note?: string; symptoms?: string[]; videoLink?: string | null }>();
   if (adherence) {
     const { heatmapDays } = buildHeatmapFromApi(adherence.adherence_days, calendarYear, month0 + 1);
     for (const hd of heatmapDays) {
       if (hd.date !== null && hd.status !== 'future') {
-        overrideMap.set(hd.date, { status: hd.status, note: hd.note });
+        overrideMap.set(hd.date, { status: hd.status, note: hd.note, symptoms: hd.symptoms, videoLink: hd.videoLink });
       }
     }
   }
@@ -372,12 +483,12 @@ export default function UnifiedAdherenceRecord() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const classify = (day: number): { status: CellStatus; note?: string } => {
+  const classify = (day: number): { status: CellStatus; note?: string; symptoms?: string[]; videoLink?: string | null } => {
     const cellDate = new Date(calendarYear, month0, day);
     if (cellDate < regimenStartDate) return { status: 'empty' };
     if (cellDate > today) return { status: 'future' };
     if (overrideMap.has(day)) return overrideMap.get(day)!;
-    return { status: 'app-recorded' };
+    return { status: 'app-recorded', symptoms: [], videoLink: null };
   };
 
   const gridCells = buildGridCells(calendarYear, month0, daysInMonth, classify);
@@ -524,7 +635,12 @@ export default function UnifiedAdherenceRecord() {
                 {/* Day detail panel */}
                 {selectedCell && selectedCell.status !== 'future' && selectedCell.status !== 'empty' && (
                   <div className="mt-6">
-                    <DayDetailPanel cell={selectedCell} month={displayMonthStr} onClose={() => setSelectedCell(null)} />
+                    <DayDetailPanel
+                      cell={selectedCell}
+                      month={displayMonthStr}
+                      videoUrl={selectedVideoUrl}
+                      onClose={() => setSelectedCell(null)}
+                    />
                   </div>
                 )}
 
@@ -649,7 +765,7 @@ export default function UnifiedAdherenceRecord() {
               )}
 
               {/* Info card */}
-              <div className="animate-card bg-gradient-to-br from-blue-600 to-indigo-700 rounded-3xl p-6 text-white shadow-lg shadow-blue-900/10 relative overflow-hidden">
+              <div className="animate-card bg-linear-to-br from-blue-600 to-indigo-700 rounded-3xl p-6 text-white shadow-lg shadow-blue-900/10 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10" />
                 <div className="flex items-start gap-3 relative z-10">
                   <Info size={16} className="text-blue-300 mt-0.5 shrink-0" />
