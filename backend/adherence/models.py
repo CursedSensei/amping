@@ -18,8 +18,8 @@ class AdherenceDayRecord(models.Model):
 
     date = models.DateField(auto_now_add=True)
     dose_date = models.DateField(default=timezone.now)
-    video_url = models.URLField(blank=True, null=True)
-    video_endpoint = models.URLField(blank=True, null=True)
+    video_url = models.URLField(blank=True, null=True, max_length=500)
+    video_endpoint = models.URLField(blank=True, null=True, max_length=500)
     status = models.CharField(max_length=50, blank=True, choices=AdherenceStatusEnum.choices, default=AdherenceStatusEnum.TECHNICAL_MISS)
 
     reconciliation_note = models.TextField(blank=True, null=True)
