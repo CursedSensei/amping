@@ -83,6 +83,7 @@ class Mobile_GetAdherenceVideoEndpointPayload(ApiSchema):
     adherence_day_id: int | None
 
 class Mobile_GetAdherenceVideoEndpointResponse(ApiSchema):
+    adherence_day_id: int
     video_endpoint: str
 
 class Mobile_AdherenceVideoStatusPayload(ApiSchema):
