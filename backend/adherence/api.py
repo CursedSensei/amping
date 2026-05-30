@@ -139,7 +139,7 @@ def get_adherence_video_endpoint(request: HttpRequest, payload: Mobile_GetAdhere
         if not record:
             record, _ = AdherenceDayRecord.objects.get_or_create(patient=patient, date=date.today())
 
-    if record.status != AdherenceStatusEnum.TECHNICAL_MISS:
+    if record.status not in [AdherenceStatusEnum.TECHNICAL_MISS, AdherenceStatusEnum.APP_RECORDED]:
         raise HttpError(400, "Not allowed to upload to this adherence day record")
 
     url = create_signed_url(patient_id=patient.id, record_id=record.id)
@@ -158,7 +158,7 @@ def adherence_video_status(request: HttpRequest, payload: Mobile_AdherenceVideoS
     record = AdherenceDayRecord.objects.filter(patient=patient, id=payload.adherence_day_id).first()
     if not record:
         raise HttpError(404, "Adherence record not found")
-    elif record.status != AdherenceStatusEnum.TECHNICAL_MISS:
+    elif record.status not in [AdherenceStatusEnum.TECHNICAL_MISS, AdherenceStatusEnum.APP_RECORDED]:
         raise HttpError(400, "Not allowed to update this adherence day record")
 
     if payload.status == Mobile_AdherenceVideoStatusPayload.AdherenceVideoStatusEnum.SUCCESS:
