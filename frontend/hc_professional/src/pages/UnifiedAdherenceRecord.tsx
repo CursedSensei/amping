@@ -488,7 +488,7 @@ export default function UnifiedAdherenceRecord() {
     if (cellDate < regimenStartDate) return { status: 'empty' };
     if (cellDate > today) return { status: 'future' };
     if (overrideMap.has(day)) return overrideMap.get(day)!;
-    return { status: 'app-recorded', symptoms: [], videoLink: null };
+    return { status: 'future', symptoms: [], videoLink: null };
   };
 
   const gridCells = buildGridCells(calendarYear, month0, daysInMonth, classify);

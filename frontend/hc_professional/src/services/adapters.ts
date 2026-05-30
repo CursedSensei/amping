@@ -89,7 +89,7 @@ export function buildHeatmapFromApi(
         videoLink: entry.video_link ?? null,
       });
     } else {
-      result.push({ date: d, status: 'app-recorded', symptoms: [], videoLink: null });
+      result.push({ date: d, status: 'future', symptoms: [], videoLink: null });
     }
   }
 
