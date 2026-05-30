@@ -18,6 +18,9 @@ data class MobileStatsResponse (
     @SerialName("current_streak")
     val currentStreak: Long,
 
+    @SerialName("grace_period_hours")
+    val gracePeriodHours: Long,
+
     @SerialName("heart_quota")
     val heartQuota: Long,
 
