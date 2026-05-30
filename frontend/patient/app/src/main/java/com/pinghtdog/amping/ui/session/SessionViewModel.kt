@@ -749,7 +749,8 @@ class SessionViewModel @Inject constructor(
                 try {
                     val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
                     val dateStr = sdf.format(java.util.Date())
-                    gabbyRepository.uploadSymptoms(context, dateStr, symptomList)
+                    val response = gabbyRepository.uploadSymptoms(context, dateStr, symptomList)
+                    _uiState.update { it.copy(adherenceDayID = response.adherenceDayID) }
                 } catch (e: Exception) {
                     android.util.Log.e("SessionViewModel", "Failed to upload symptoms to production", e)
                 }
@@ -851,7 +852,8 @@ class SessionViewModel @Inject constructor(
                     com.pinghtdog.amping.data.repository.OfflineQueueManager.updateEntryStatus(context, queueEntry.id, "Uploading")
                     loadOfflineQueue()
                     
-                    gabbyRepository.uploadVideoToProduction(context, encryptedBytes)
+                    val adherenceDayID = _uiState.value.adherenceDayID
+                    gabbyRepository.uploadVideoToProduction(context, encryptedBytes, adherenceDayID)
                     
                     com.pinghtdog.amping.data.repository.OfflineQueueManager.removeEntry(context, queueEntry.id)
                     loadOfflineQueue()
@@ -964,7 +966,8 @@ class SessionViewModel @Inject constructor(
                             file.readBytes()
                         }
                         
-                        gabbyRepository.uploadVideoToProduction(context, encryptedBytes)
+                        val adherenceDayID = _uiState.value.adherenceDayID
+                        gabbyRepository.uploadVideoToProduction(context, encryptedBytes, adherenceDayID)
                         
                         com.pinghtdog.amping.data.repository.OfflineQueueManager.removeEntry(context, entry.id)
                         loadOfflineQueue()

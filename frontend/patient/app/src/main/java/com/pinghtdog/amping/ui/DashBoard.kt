@@ -310,7 +310,7 @@ fun DashBoard(
             Spacer(modifier = Modifier.height(24.dp))
 
             // Penalty Warning Card
-            Card(
+            if (!uiState.isTodayTaken) Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp),
@@ -341,7 +341,7 @@ fun DashBoard(
                     )
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
