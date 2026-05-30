@@ -77,6 +77,7 @@ class DashboardViewModel @Inject constructor(
                         heartQuota = stats.heartQuota.toInt(),
                         totalRegimenDays = stats.totalRegimenDays.toInt(),
                         currentDay = profile.currentDay.toInt(),
+                        gracePeriodHours = stats.gracePeriodHours,
                         isLoading = false
                     )
                 }
