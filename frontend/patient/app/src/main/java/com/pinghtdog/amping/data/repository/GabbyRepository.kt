@@ -14,6 +14,7 @@ import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocketSession
 import io.ktor.client.request.get
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.request.url
 import io.ktor.client.request.header
@@ -62,8 +63,9 @@ interface GabbyRepository {
     suspend fun getStats(context: Context): MobileStatsResponse
     suspend fun getWeeklyAdherence(context: Context): MobileWeeklyAdherenceResponse
     suspend fun uploadSymptoms(context: Context, date: String, symptoms: List<String>): MobileUploadSymtomsResponse
-    suspend fun getAdherenceVideoEndpoint(context: Context): MobileGetAdherenceVideoEndpointResponse
-    suspend fun uploadVideoToProduction(context: Context, videoBytes: ByteArray): String
+    suspend fun getAdherenceVideoEndpoint(context: Context, adherenceDayID: Long?): MobileGetAdherenceVideoEndpointResponse
+    suspend fun uploadVideoToProduction(context: Context, videoBytes: ByteArray, adherenceDayID: Long?): String
+    suspend fun adherenceVideoStatus(context: Context, adherenceDayID: Long, status: AdherenceVideoStatusEnum): MobileAdherenceVideoStatusResponse
 }
 
 @Singleton
@@ -191,70 +193,72 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
         }
     }
 
-    override suspend fun getAdherenceVideoEndpoint(context: Context): MobileGetAdherenceVideoEndpointResponse {
+    override suspend fun getAdherenceVideoEndpoint(context: Context, adherenceDayID: Long?): MobileGetAdherenceVideoEndpointResponse {
         return executeAuthenticatedRequest(context) { token ->
-            get("$BASE_URL/api/v1/mobile/adherence_video_endpoint/") {
+            post("$BASE_URL/api/v1/mobile/adherence_video_endpoint/") {
                 header(HttpHeaders.Authorization, "Bearer $token")
+                contentType(ContentType.Application.Json)
+                setBody(MobileGetAdherenceVideoEndpointPayload(adherenceDayID))
             }
         }
     }
 
-    override suspend fun uploadVideoToProduction(context: Context, videoBytes: ByteArray): String {
-        // 1. Handshake to retrieve signed upload video endpoint URL
-        val endpointResponse = getAdherenceVideoEndpoint(context)
-        val videoEndpoint = endpointResponse.videoEndpoint
-
-        // 2. Perform multipart form binary stream upload to this resolved production endpoint
-        var token = getValidAccessToken(context)
-        var response = try {
-            httpClient.submitFormWithBinaryData(
-                url = videoEndpoint,
-                formData = formData {
-                    append("video", videoBytes, Headers.build {
-                        append(HttpHeaders.ContentType, "video/mp4")
-                        append(HttpHeaders.ContentDisposition, "filename=\"vdot.mp4\"")
-                    })
-                }
-            ) {
+    override suspend fun adherenceVideoStatus(
+        context: Context,
+        adherenceDayID: Long,
+        status: AdherenceVideoStatusEnum
+    ): MobileAdherenceVideoStatusResponse {
+        return executeAuthenticatedRequest(context) { token ->
+            post("$BASE_URL/api/v1/mobile/adherence_video_status/") {
                 header(HttpHeaders.Authorization, "Bearer $token")
-            }
-        } catch (e: ClientRequestException) {
-            if (e.response.status.value == 401) {
-                token = refreshAccessToken(context)
-                httpClient.submitFormWithBinaryData(
-                    url = videoEndpoint,
-                    formData = formData {
-                        append("video", videoBytes, Headers.build {
-                            append(HttpHeaders.ContentType, "video/mp4")
-                            append(HttpHeaders.ContentDisposition, "filename=\"vdot.mp4\"")
-                        })
-                    }
-                ) {
-                    header(HttpHeaders.Authorization, "Bearer $token")
-                }
-            } else {
-                throw e
+                contentType(ContentType.Application.Json)
+                setBody(MobileAdherenceVideoStatusPayload(adherenceDayID, status))
             }
         }
+    }
 
-        if (response.status.value == 401) {
-            token = refreshAccessToken(context)
-            response = httpClient.submitFormWithBinaryData(
-                url = videoEndpoint,
-                formData = formData {
-                    append("video", videoBytes, Headers.build {
-                        append(HttpHeaders.ContentType, "video/mp4")
-                        append(HttpHeaders.ContentDisposition, "filename=\"vdot.mp4\"")
-                    })
-                }
-            ) {
-                header(HttpHeaders.Authorization, "Bearer $token")
+    override suspend fun uploadVideoToProduction(context: Context, videoBytes: ByteArray, adherenceDayID: Long?): String {
+        // 1. Handshake to retrieve signed upload video endpoint URL
+        val endpointResponse = getAdherenceVideoEndpoint(context, adherenceDayID)
+        val videoEndpoint = endpointResponse.videoEndpoint
+        val resolvedAdherenceDayID = endpointResponse.adherenceDayID
+
+        // 2. Perform direct binary PUT request to the pre-signed S3 URL (NO Authorization header!)
+        val response = try {
+            httpClient.put(videoEndpoint) {
+                contentType(ContentType.parse("video/mp4"))
+                setBody(videoBytes)
             }
+        } catch (e: Exception) {
+            if (resolvedAdherenceDayID != null) {
+                try {
+                    adherenceVideoStatus(context, resolvedAdherenceDayID, AdherenceVideoStatusEnum.Failed)
+                } catch (statusEx: Exception) {
+                    android.util.Log.e("GabbyRepository", "Failed to send failed video status", statusEx)
+                }
+            }
+            throw IOException("Failed to upload production video to storage: ${e.localizedMessage}", e)
         }
 
         val text = response.bodyAsText()
         if (!response.status.isSuccess()) {
-            throw IOException("Failed to upload production video: (${response.status.value}) $text")
+            if (resolvedAdherenceDayID != null) {
+                try {
+                    adherenceVideoStatus(context, resolvedAdherenceDayID, AdherenceVideoStatusEnum.Failed)
+                } catch (statusEx: Exception) {
+                    android.util.Log.e("GabbyRepository", "Failed to send failed video status", statusEx)
+                }
+            }
+            throw IOException("Failed to upload production video to storage: (${response.status.value}) $text")
+        }
+
+        // 3. Notify the status success endpoint
+        if (resolvedAdherenceDayID != null) {
+            try {
+                adherenceVideoStatus(context, resolvedAdherenceDayID, AdherenceVideoStatusEnum.Success)
+            } catch (statusEx: Exception) {
+                throw IOException("Video uploaded successfully, but failed to notify backend of status: ${statusEx.localizedMessage}", statusEx)
+            }
         }
 
         return text
