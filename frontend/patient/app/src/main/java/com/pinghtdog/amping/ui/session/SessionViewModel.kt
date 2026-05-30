@@ -540,7 +540,7 @@ class SessionViewModel @Inject constructor(
         updateQuickReplies()
     }
 
-    private fun parseResponse(rawText: String): Message {
+    internal fun parseResponse(rawText: String): Message {
         val toolCallRegex = Regex("""<tool_call>([\s\S]*?)<\/tool_call>""")
         val thinkRegex = Regex("""<think>([\s\S]*?)<\/think>""")
 
@@ -1083,4 +1083,4 @@ class SessionViewModel @Inject constructor(
         fallbackJob?.cancel()
         super.onCleared()
     }
-}
+}
