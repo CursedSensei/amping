@@ -1,9 +1,11 @@
 from django.http import HttpRequest
+from datetime import datetime
 
 from Amping.utils import create_routers
 from users.utils import getPatientUserByToken
 from .models import PatientStats, PenaltyEvent, PenaltyTierEnum
 from .schemas import Mobile_StatsResponse, Web_GamificationResponse
+from .utils import PenaltySystem
 from django.shortcuts import get_object_or_404
 from .apps import logger
 
@@ -39,11 +41,17 @@ def get_gamification_status_mobile(request: HttpRequest):
     patient_stats = get_object_or_404(PatientStats, patient=patient)
     penalty_events = PenaltyEvent.objects.filter(patient_stats=patient_stats).order_by('-date')
 
+    # Calculate grace period hours
+    age_category = PenaltySystem.age_category_from_birthyear(patient.birthyear, datetime.now())
+    stage = PenaltySystem.stage_from_day(patient_stats.current_day)
+    grace_period_hours = PenaltySystem.grace_window_hours(age_category, stage)
+
     response = Mobile_StatsResponse(
         total_regimen_days=patient_stats.total_regimen_days,
         current_streak=patient_stats.current_streak,
         best_streak=patient_stats.best_streak,
         heart_quota=patient_stats.heart_quota,
+        grace_period_hours=grace_period_hours,
         penalty_history=[
             Mobile_StatsResponse.Mobile_PenaltyEvent(
                 date=event.date.isoformat(),

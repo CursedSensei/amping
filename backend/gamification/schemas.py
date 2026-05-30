@@ -26,6 +26,7 @@ class Mobile_StatsResponse(ApiSchema):
     current_streak: int
     best_streak: int
     heart_quota: int
+    grace_period_hours: int
     penalty_history: list[Mobile_PenaltyEvent]
 
 __ALL__ = [
