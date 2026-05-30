@@ -9,5 +9,6 @@ data class QueueEntry(
     val timestamp: Long,
     val profile: String,
     val retryCount: Int = 0,
-    val status: String = "Pending" // "Pending", "Failed", "Uploading"
+    val status: String = "Pending", // "Pending", "Failed", "Uploading"
+    val adherenceDayID: Long? = null
 )

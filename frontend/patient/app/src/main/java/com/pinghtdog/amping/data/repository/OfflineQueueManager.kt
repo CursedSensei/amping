@@ -34,13 +34,14 @@ object OfflineQueueManager {
         }
     }
 
-    fun addEntry(context: Context, path: String, profile: String): QueueEntry {
+    fun addEntry(context: Context, path: String, profile: String, adherenceDayID: Long? = null): QueueEntry {
         val queue = getQueue(context).toMutableList()
         val entry = QueueEntry(
             id = UUID.randomUUID().toString(),
             localEncryptedPath = path,
             timestamp = System.currentTimeMillis(),
-            profile = profile
+            profile = profile,
+            adherenceDayID = adherenceDayID
         )
         queue.add(entry)
         saveQueue(context, queue)

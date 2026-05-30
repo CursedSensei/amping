@@ -823,9 +823,10 @@ class SessionViewModel @Inject constructor(
                 delay(300)
 
                 val queueEntry = com.pinghtdog.amping.data.repository.OfflineQueueManager.addEntry(
-                    context, 
-                    encryptedFile.absolutePath, 
-                    _uiState.value.activeProfile
+                    context,
+                    encryptedFile.absolutePath,
+                    _uiState.value.activeProfile,
+                    adherenceDayID = _uiState.value.adherenceDayID
                 )
                 loadOfflineQueue()
 
@@ -966,7 +967,7 @@ class SessionViewModel @Inject constructor(
                             file.readBytes()
                         }
                         
-                        val adherenceDayID = _uiState.value.adherenceDayID
+                        val adherenceDayID = entry.adherenceDayID ?: _uiState.value.adherenceDayID
                         gabbyRepository.uploadVideoToProduction(context, encryptedBytes, adherenceDayID)
                         
                         com.pinghtdog.amping.data.repository.OfflineQueueManager.removeEntry(context, entry.id)
