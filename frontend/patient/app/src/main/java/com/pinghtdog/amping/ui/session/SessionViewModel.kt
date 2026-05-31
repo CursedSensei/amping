@@ -8,7 +8,6 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import android.speech.tts.Voice
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pinghtdog.amping.data.model.Message
@@ -540,7 +539,7 @@ class SessionViewModel @Inject constructor(
         updateQuickReplies()
     }
 
-    private fun parseResponse(rawText: String): Message {
+    internal fun parseResponse(rawText: String): Message {
         val toolCallRegex = Regex("""<tool_call>([\s\S]*?)<\/tool_call>""")
         val thinkRegex = Regex("""<think>([\s\S]*?)<\/think>""")
 
