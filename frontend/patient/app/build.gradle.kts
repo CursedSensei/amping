@@ -49,6 +49,11 @@ android {
         unitTests {
             isReturnDefaultValues = true
             isIncludeAndroidResources = true
+            all {
+                // Each test class keeps one OkHttp client alive for its lifetime.
+                // Running the full suite without extra heap causes OOM.
+                it.jvmArgs("-Xmx2g", "-XX:+HeapDumpOnOutOfMemoryError")
+            }
         }
     }
     packaging {
@@ -116,11 +121,3 @@ dependencies {
     implementation(libs.ktor.client.websockets)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
-
-    // CameraX
-    implementation(libs.androidx.camera.core)
-    implementation(libs.androidx.camera.camera2)
-    implementation(libs.androidx.camera.lifecycle)
-    implementation(libs.androidx.camera.video)
-    implementation(libs.androidx.camera.view)
-}

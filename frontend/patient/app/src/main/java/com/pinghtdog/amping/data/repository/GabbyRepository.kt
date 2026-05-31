@@ -459,7 +459,7 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
                     "senior" -> "Splendid, dear! Activating the camera now. Take your time."
                     else -> "Excellent. Activating the secure VDOT filming session now. Please position the camera so your swallow is clearly visible."
                 }
-                "$transitionText\n\n<tool_call> {\"name\": \"trigger_vdot\", \"arguments\": {\"duration_seconds\": $duration}} </tool_call>"
+                "$transitionText\n\n<tool_call> {\"name\": \"trigger_vdot\", \"arguments\": {\"duration_seconds\": \"$duration\"}} </tool_call>"
             } else {
                 val standByText = when (profile) {
                     "youth" -> "No worries, buddy! Take your time. Just say the word or tap when you're ready to show me that pill!"
@@ -511,5 +511,4 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
             content = cleanContent,
             toolCall = parsedToolCall
         )
-    }
-}
+    

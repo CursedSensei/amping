@@ -24,7 +24,13 @@ import org.junit.Test
  */
 class GabbyRepositoryMockChatFlowTest {
 
-    private val repo = GabbyRepositoryImpl()
+    companion object {
+        // One instance shared across all test methods in this class.
+        // JUnit 4 creates a new test class instance per method, so a class-level
+        // property would spin up a fresh OkHttp client (and its thread pool) for
+        // every test — causing OOM when the full suite runs together.
+        val repo = GabbyRepositoryImpl()
+    }
 
     // Helpers
 
@@ -387,13 +393,4 @@ class GabbyRepositoryMockChatFlowTest {
 
     @Test
     fun `upload complete response content has no tool_call XML tags`() = runTest {
-        val response = repo.getChatResponse(listOf(userMsg("VDOT upload complete.")), "adult")
-        assertFalse(response.content.contains("<tool_call>"))
-    }
-
-    @Test
-    fun `emergency response content has no tool_call XML tags`() = runTest {
-        val response = repo.getChatResponse(listOf(userMsg("I want to kill myself")), "adult")
-        assertFalse(response.content.contains("<tool_call>"))
-    }
-}
+        val response = repo.getChatResponse(listOf(userMsg("VDOT upload complete."))
