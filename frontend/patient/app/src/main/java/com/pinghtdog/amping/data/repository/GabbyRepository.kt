@@ -511,4 +511,5 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
             content = cleanContent,
             toolCall = parsedToolCall
         )
-    
+    }
+}
