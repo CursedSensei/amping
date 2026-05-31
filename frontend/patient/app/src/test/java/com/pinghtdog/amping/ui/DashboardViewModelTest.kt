@@ -8,6 +8,7 @@ import com.pinghtdog.amping.data.repository.GabbyRepository
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.unmockkAll
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -87,6 +88,7 @@ class DashboardViewModelTest {
     fun tearDown() {
         Dispatchers.resetMain()
         tempDir.deleteRecursively()
+        unmockkAll()
     }
 
     private fun createViewModel() = DashboardViewModel(fakeRepo, context)

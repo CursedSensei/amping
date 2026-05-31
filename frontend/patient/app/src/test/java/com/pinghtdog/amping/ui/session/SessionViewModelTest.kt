@@ -8,6 +8,7 @@ import com.pinghtdog.amping.data.repository.GabbyRepository
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.unmockkAll
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -25,19 +26,12 @@ import java.nio.file.Files
 /**
  * Integration tests for [SessionViewModel].
  *
- * The ViewModel is instantiated with a MockK [GabbyRepository] and a mocked
- * [Context] backed by a real temp directory. Network mode is forced off via
- * [SessionViewModel.toggleNetworkMode] so every [sendMessage] call routes
- * through the injected [GabbyRepository.getChatResponse] mock.
- *
- * Covers:
- *   - Phase state-machine transitions via tool calls
- *   - Symptom selection and nausea severity logic
- *   - Emergency override wiring
- *   - Network error dismissal
- *   - vdotRepromptCount increment behaviour
- *   - Developer debug helpers (forcePhase, triggerEmergencyOverride)
- *   - completeRecording stores path and transitions to VDOT_REVIEW
+ * Every [runTest] block ends with [SessionViewModel.clearForTest] to cancel
+ * viewModelScope (and its children: fallback-timer coroutine, background-sync
+ * loop) *before* runTest's own cleanup sweep. Without this, runTest finds
+ * those coroutines still pending and throws [UncompletedCoroutinesError],
+ * which cascades into an OOM as the JVM tries to report each subsequent
+ * failure.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SessionViewModelTest {
@@ -60,13 +54,16 @@ class SessionViewModelTest {
         coEvery { fakeRepo.getPatientProfile(any()) } throws Exception("no network in test")
         coEvery { fakeRepo.getStats(any()) } throws Exception("no network in test")
         viewModel = SessionViewModel(fakeRepo, context)
+        viewModel.cancelBackgroundSync()
         viewModel.toggleNetworkMode(false)
     }
 
     @After
     fun tearDown() {
+        viewModel.clearForTest()
         Dispatchers.resetMain()
         tempDir.deleteRecursively()
+        unmockkAll()
     }
 
     // Initial state
@@ -105,6 +102,7 @@ class SessionViewModelTest {
         viewModel.sendMessage("Hello")
         advanceUntilIdle()
         assertTrue(viewModel.uiState.value.chatHistory.any { it.role == "user" && it.content == "Hello" })
+        viewModel.clearForTest()
     }
 
     @Test
@@ -114,6 +112,7 @@ class SessionViewModelTest {
         viewModel.sendMessage("Hello")
         advanceUntilIdle()
         assertTrue(viewModel.uiState.value.chatHistory.any { it.role == "assistant" && it.content == "I hear you!" })
+        viewModel.clearForTest()
     }
 
     @Test
@@ -123,6 +122,7 @@ class SessionViewModelTest {
         viewModel.sendMessage("Anything")
         advanceUntilIdle()
         assertNull(viewModel.uiState.value.networkError)
+        viewModel.clearForTest()
     }
 
     @Test
@@ -136,6 +136,7 @@ class SessionViewModelTest {
         val userMessages = viewModel.uiState.value.chatHistory.filter { it.role == "user" }
         assertTrue(userMessages.any { it.content == "First" })
         assertTrue(userMessages.any { it.content == "Second" })
+        viewModel.clearForTest()
     }
 
     // Phase transitions via tool calls
@@ -147,8 +148,8 @@ class SessionViewModelTest {
             toolCall = ToolCall(name = "show_symptom_checklist")
         )
         viewModel.sendMessage("Hello")
-        advanceUntilIdle()
         assertEquals("show_symptom_checklist", viewModel.uiState.value.pendingToolCallName)
+        viewModel.clearForTest()
     }
 
     @Test
@@ -162,6 +163,7 @@ class SessionViewModelTest {
         viewModel.executePendingToolCall()
         assertEquals(SessionPhase.SYMPTOM_LOGGING, viewModel.uiState.value.currentPhase)
         assertNull(viewModel.uiState.value.pendingToolCallName)
+        viewModel.clearForTest()
     }
 
     @Test
@@ -175,6 +177,7 @@ class SessionViewModelTest {
         viewModel.executePendingToolCall()
         assertEquals(3, viewModel.uiState.value.conversationStage)
         assertNull(viewModel.uiState.value.pendingToolCallName)
+        viewModel.clearForTest()
     }
 
     @Test
@@ -187,6 +190,7 @@ class SessionViewModelTest {
         advanceUntilIdle()
         viewModel.executePendingToolCall()
         assertEquals(SessionPhase.VDOT_CAPTURE, viewModel.uiState.value.currentPhase)
+        viewModel.clearForTest()
     }
 
     @Test
@@ -199,6 +203,7 @@ class SessionViewModelTest {
         advanceUntilIdle()
         viewModel.executePendingToolCall()
         assertEquals(SessionPhase.SUCCESS, viewModel.uiState.value.currentPhase)
+        viewModel.clearForTest()
     }
 
     @Test
@@ -206,27 +211,13 @@ class SessionViewModelTest {
         val phaseBefore = viewModel.uiState.value.currentPhase
         viewModel.executePendingToolCall()
         assertEquals(phaseBefore, viewModel.uiState.value.currentPhase)
+        viewModel.clearForTest()
     }
 
     // vdotRepromptCount
 
     @Test
     fun `vdotRepromptCount increments when stage 3 response has no trigger_vdot tool call`() = runTest {
-        // Advance to stage 3 first
-        viewModel.forcePhase(SessionPhase.CONVERSATION)
-        // Manually bump the conversationStage to 3 by faking a transition_to_vdot response
-        coEvery { fakeRepo.getChatResponse(any(), any()) } returns Message(
-            role = "assistant", content = "Not yet triggering",
-            toolCall = null
-        )
-        // Force stage 3 via debug helper so the counter logic fires
-        viewModel.forcePhase(SessionPhase.CONVERSATION)
-        // Use internal state to set conversationStage = 3
-        // The vdotRepromptCount increments when conversationStage == 3 and no trigger_vdot
-        // We trigger this by calling handleInferenceResult indirectly via sendMessage at stage 3.
-        // Set stage via forcePhase (which sets conversationStage=3 for non-CONVERSATION phases):
-        // Actually forcePhase(VDOT_CAPTURE) sets stage to 3 via the else branch.
-        // Instead, use a transition_to_vdot response to reach stage 3 naturally.
         coEvery { fakeRepo.getChatResponse(any(), any()) } returnsMany listOf(
             Message(
                 role = "assistant", content = "VDOT transition",
@@ -243,6 +234,7 @@ class SessionViewModelTest {
         advanceUntilIdle()
 
         assertEquals(countBefore + 1, viewModel.uiState.value.vdotRepromptCount)
+        viewModel.clearForTest()
     }
 
     // Emergency override
@@ -256,6 +248,7 @@ class SessionViewModelTest {
         viewModel.sendMessage("I want to hurt myself")
         advanceUntilIdle()
         assertEquals("Self-harm detected", viewModel.uiState.value.emergencyState)
+        viewModel.clearForTest()
     }
 
     @Test
@@ -333,6 +326,7 @@ class SessionViewModelTest {
         advanceUntilIdle()
         viewModel.dismissNetworkError()
         assertNull(viewModel.uiState.value.networkError)
+        viewModel.clearForTest()
     }
 
     @Test
@@ -341,6 +335,7 @@ class SessionViewModelTest {
         viewModel.sendMessage("Hello")
         advanceUntilIdle()
         assertNotNull(viewModel.uiState.value.networkError)
+        viewModel.clearForTest()
     }
 
     // Profile selection
@@ -357,6 +352,7 @@ class SessionViewModelTest {
         viewModel.selectProfile("senior")
         advanceUntilIdle()
         assertEquals(SessionPhase.CONVERSATION, viewModel.uiState.value.currentPhase)
+        viewModel.clearForTest()
     }
 
     @Test

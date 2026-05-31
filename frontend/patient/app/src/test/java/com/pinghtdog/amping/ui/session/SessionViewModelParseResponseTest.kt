@@ -5,6 +5,7 @@ import com.pinghtdog.amping.data.repository.GabbyRepository
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.unmockkAll
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -49,12 +50,15 @@ class SessionViewModelParseResponseTest {
         coEvery { fakeRepo.getPatientProfile(any()) } throws Exception("no network")
         coEvery { fakeRepo.getStats(any()) } throws Exception("no network")
         viewModel = SessionViewModel(fakeRepo, context)
+        viewModel.cancelBackgroundSync()
     }
 
     @After
     fun tearDown() {
+        viewModel.clearForTest()
         Dispatchers.resetMain()
         tempDir.deleteRecursively()
+        unmockkAll()
     }
 
     // Valid tool call JSON
