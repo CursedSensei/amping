@@ -2,23 +2,22 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    id("kotlin-kapt")
+    alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
     alias(libs.plugins.kotlin.serialization)
 }
 
 android {
     namespace = "com.pinghtdog.amping"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.pinghtdog.amping"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 37
         versionCode = 1
-        versionName = "1.0"
+        versionName = "0.1.0" // x-release-please-version
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -45,12 +44,29 @@ android {
     buildFeatures {
         compose = true
     }
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+            isIncludeAndroidResources = true
+            all {
+                // Each test class runs in its own forked JVM process.
+                // Without forking, MockK proxy registries and SessionViewModel
+                // TTS/coroutine stubs accumulate across all 7 classes in one
+                // shared process, filling the entire 4 GB heap before GC can
+                // collect — cascading into OOM. Forking per class keeps each
+                // run isolated; memory is freed when the process exits.
+                it.jvmArgs("-Xmx4g", "-XX:+HeapDumpOnOutOfMemoryError")
+                it.forkEvery = 1
+            }
+        }
+    }
     packaging {
         jniLibs {
             useLegacyPackaging = false
         }
     }
 }
+
 
 dependencies {
 
@@ -64,6 +80,10 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.foundation.android)
     testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.turbine)
+    testImplementation(libs.ktor.client.mock)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -78,26 +98,26 @@ dependencies {
     androidTestImplementation(composeBom)
 
     // Core Compose libraries
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.compose.material3:material3") // Material Design 3
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.navigation:navigation-compose:2.7.7") // Use the latest version
-    implementation("androidx.compose.material:material-icons-extended")
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.compose.material3) // Material Design 3
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.navigation.compose) // Use the latest version
+    implementation(libs.androidx.compose.material.icons.extended)
 
     // Required to bridge Compose with standard Activities
-    implementation("androidx.activity:activity-compose:1.9.0")
+    implementation(libs.androidx.activity.compose.v190)
 
     // Tooling support for Android Studio (previews, etc.)
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 
     // kotlinx JSON
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
+    implementation(libs.kotlinx.serialization.json)
 
     // Dagger Hilt DI
     implementation(libs.hilt.android)
-    kapt(libs.hilt.compiler)
+    ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
 
     // Ktor Client

@@ -11,6 +11,7 @@ import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.client.plugins.websocket.pingInterval
 import io.ktor.client.plugins.websocket.webSocketSession
 import io.ktor.client.request.get
 import io.ktor.client.request.post
@@ -18,19 +19,17 @@ import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.request.url
 import io.ktor.client.request.header
-import io.ktor.client.request.forms.submitFormWithBinaryData
-import io.ktor.client.request.forms.formData
 import io.ktor.client.statement.bodyAsText
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
-import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -89,7 +88,7 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
             }
         }
         install(WebSockets) {
-            pingInterval = 20_000
+            pingInterval = 20.seconds
         }
         install(ContentNegotiation) {
             json(jsonParser)
@@ -459,7 +458,7 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
                     "senior" -> "Splendid, dear! Activating the camera now. Take your time."
                     else -> "Excellent. Activating the secure VDOT filming session now. Please position the camera so your swallow is clearly visible."
                 }
-                "$transitionText\n\n<tool_call> {\"name\": \"trigger_vdot\", \"arguments\": {\"duration_seconds\": $duration}} </tool_call>"
+                "$transitionText\n\n<tool_call> {\"name\": \"trigger_vdot\", \"arguments\": {\"duration_seconds\": \"$duration\"}} </tool_call>"
             } else {
                 val standByText = when (profile) {
                     "youth" -> "No worries, buddy! Take your time. Just say the word or tap when you're ready to show me that pill!"

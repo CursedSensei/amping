@@ -8,7 +8,6 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import android.speech.tts.Voice
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pinghtdog.amping.data.model.Message
@@ -23,8 +22,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
 import java.util.Locale
 import javax.inject.Inject
 
@@ -32,8 +31,13 @@ import javax.inject.Inject
 @HiltViewModel
 class SessionViewModel @Inject constructor(
     private val gabbyRepository: GabbyRepository,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) : ViewModel() {
+
+    companion object {
+        // Shared Json instance — creating a new one per parseResponse() call is slow.
+        private val jsonParser = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+    }
 
     private val _uiState = MutableStateFlow(SessionUiState())
     val uiState: StateFlow<SessionUiState> = _uiState.asStateFlow()
@@ -41,6 +45,7 @@ class SessionViewModel @Inject constructor(
     private var tts: TextToSpeech? = null
     private var speechRecognizer: SpeechRecognizer? = null
     private var fallbackJob: kotlinx.coroutines.Job? = null
+    private var backgroundSyncJob: kotlinx.coroutines.Job? = null
     private var hasLoggedVoices = false
 
     init {
@@ -344,10 +349,12 @@ class SessionViewModel @Inject constructor(
             val response = gabbyRepository.getChatResponse(currentMessages, _uiState.value.activeProfile)
             handleInferenceResult(response)
         } catch (e: Exception) {
+            val errorMessage = e.localizedMessage ?: "Failed to reach Gabby."
             android.util.Log.e("GabbyMock", "Error running mock chat flow", e)
             _uiState.update {
                 it.copy(
                     assistantTyping = false,
+                    networkError = errorMessage,
                     chatHistory = it.chatHistory + Message(role = "assistant", content = "Sorry, I had trouble connecting. Let's try that check-in again.")
                 )
             }
@@ -540,7 +547,7 @@ class SessionViewModel @Inject constructor(
         updateQuickReplies()
     }
 
-    private fun parseResponse(rawText: String): Message {
+    internal fun parseResponse(rawText: String): Message {
         val toolCallRegex = Regex("""<tool_call>([\s\S]*?)<\/tool_call>""")
         val thinkRegex = Regex("""<think>([\s\S]*?)<\/think>""")
 
@@ -561,7 +568,7 @@ class SessionViewModel @Inject constructor(
         if (match != null) {
             val jsonStr = match.groupValues[1].trim()
             try {
-                parsedToolCall = Json { ignoreUnknownKeys = true }.decodeFromString<ToolCall>(jsonStr)
+                parsedToolCall = jsonParser.decodeFromString<ToolCall>(jsonStr)
             } catch (e: Exception) {
                 e.printStackTrace()
                 // Robust Regex-based Fallback Parser for LLM-generated malformed JSON
@@ -939,7 +946,7 @@ class SessionViewModel @Inject constructor(
     }
 
     private fun startPeriodicBackgroundSync() {
-        viewModelScope.launch {
+        backgroundSyncJob = viewModelScope.launch {
             while (true) {
                 delay(15000)
                 if (isNetworkAvailable() && _uiState.value.isNetworkMode) {
@@ -1081,6 +1088,17 @@ class SessionViewModel @Inject constructor(
         tts?.shutdown()
         speechRecognizer?.destroy()
         fallbackJob?.cancel()
+        backgroundSyncJob?.cancel()
+        viewModelScope.cancel()
         super.onCleared()
     }
+
+    internal fun cancelBackgroundSync() {
+        backgroundSyncJob?.cancel()
+    }
+
+    // Called from unit tests to release TTS, cancel all coroutines, and
+    // clear mocks after each test method. onCleared() is protected, so
+    // this internal shim is the clean way to invoke it from test code.
+    internal fun clearForTest() = onCleared()
 }
