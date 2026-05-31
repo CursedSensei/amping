@@ -63,6 +63,14 @@ android {
     }
 }
 
+// Kotlin 2.x uses the K2 compiler for KAPT stub generation by default.
+// Hilt's annotation processor requires class hierarchy info that K2 stubs
+// omit, causing "Expected @AndroidEntryPoint to have a value."
+// correctErrorTypes enables a two-round compilation that resolves this.
+kapt {
+    correctErrorTypes = true
+}
+
 dependencies {
 
     implementation(libs.androidx.core.ktx)
@@ -115,17 +123,4 @@ dependencies {
     kapt(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
 
-    // Ktor Client
-    implementation(libs.ktor.client.core)
-    implementation(libs.ktor.client.okhttp)
-    implementation(libs.ktor.client.websockets)
-    implementation(libs.ktor.client.content.negotiation)
-    implementation(libs.ktor.serialization.kotlinx.json)
-
-    // CameraX
-    implementation(libs.androidx.camera.core)
-    implementation(libs.androidx.camera.camera2)
-    implementation(libs.androidx.camera.lifecycle)
-    implementation(libs.androidx.camera.video)
-    implementation(libs.androidx.camera.view)
-}
+    // K
