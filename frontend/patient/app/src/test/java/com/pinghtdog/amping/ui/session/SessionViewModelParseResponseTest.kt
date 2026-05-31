@@ -182,4 +182,29 @@ class SessionViewModelParseResponseTest {
         assertFalse(message.content.contains("<think>"))
         assertFalse(message.content.contains("<tool_call>"))
         assertTrue(message.content.contains("Hello!"))
-      
+        assertEquals("trigger_vdot", message.toolCall?.name)
+    }
+
+    @Test
+    fun `parseResponse strips multiline think block completely`() {
+        val raw = """
+            <think>
+            Line one of thinking.
+            Line two of thinking.
+            </think>
+            This is the actual response.
+        """.trimIndent()
+        val message = viewModel.parseResponse(raw)
+        assertFalse(message.content.contains("Line one"))
+        assertFalse(message.content.contains("Line two"))
+        assertTrue(message.content.contains("This is the actual response."))
+    }
+
+    @Test
+    fun `parseResponse with only a think block leaves blank content`() {
+        val raw = "<think>All internal, nothing visible.</think>"
+        val message = viewModel.parseResponse(raw)
+        assertTrue(message.content.isBlank())
+        assertNull(message.toolCall)
+    }
+}
