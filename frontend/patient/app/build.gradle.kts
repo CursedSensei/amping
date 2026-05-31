@@ -49,9 +49,14 @@ android {
             isReturnDefaultValues = true
             isIncludeAndroidResources = true
             all {
-                // Each test class keeps one OkHttp client alive for its lifetime.
-                // Running the full suite without extra heap causes OOM.
-                it.jvmArgs("-Xmx2g", "-XX:+HeapDumpOnOutOfMemoryError")
+                // Each test class runs in its own forked JVM process.
+                // Without forking, MockK proxy registries and SessionViewModel
+                // TTS/coroutine stubs accumulate across all 7 classes in one
+                // shared process, filling the entire 4 GB heap before GC can
+                // collect — cascading into OOM. Forking per class keeps each
+                // run isolated; memory is freed when the process exits.
+                it.jvmArgs("-Xmx4g", "-XX:+HeapDumpOnOutOfMemoryError")
+                it.forkEvery = 1
             }
         }
     }
