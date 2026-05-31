@@ -1,5 +1,5 @@
 {
   ".": "0.1.0",
-  "frontend/hc_professional": "0.0.0",
-  "frontend/patient": "1.0.0"
+  "frontend/hc_professional": "0.1.0",
+  "frontend/patient": "0.1.0"
 }
