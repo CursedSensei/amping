@@ -23,7 +23,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
 import java.util.Locale
 import javax.inject.Inject
 
@@ -33,6 +32,11 @@ class SessionViewModel @Inject constructor(
     private val gabbyRepository: GabbyRepository,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
+
+    companion object {
+        // Shared Json instance — creating a new one per parseResponse() call is slow.
+        private val jsonParser = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+    }
 
     private val _uiState = MutableStateFlow(SessionUiState())
     val uiState: StateFlow<SessionUiState> = _uiState.asStateFlow()
@@ -560,7 +564,7 @@ class SessionViewModel @Inject constructor(
         if (match != null) {
             val jsonStr = match.groupValues[1].trim()
             try {
-                parsedToolCall = Json { ignoreUnknownKeys = true }.decodeFromString<ToolCall>(jsonStr)
+                parsedToolCall = jsonParser.decodeFromString<ToolCall>(jsonStr)
             } catch (e: Exception) {
                 e.printStackTrace()
                 // Robust Regex-based Fallback Parser for LLM-generated malformed JSON
