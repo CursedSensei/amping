@@ -393,4 +393,13 @@ class GabbyRepositoryMockChatFlowTest {
 
     @Test
     fun `upload complete response content has no tool_call XML tags`() = runTest {
-        val response = repo.getChatResponse(listOf(userMsg("VDOT upload complete."))
+        val response = repo.getChatResponse(listOf(userMsg("VDOT upload complete.")), "adult")
+        assertFalse(response.content.contains("<tool_call>"))
+    }
+
+    @Test
+    fun `emergency response content has no tool_call XML tags`() = runTest {
+        val response = repo.getChatResponse(listOf(userMsg("I want to kill myself")), "adult")
+        assertFalse(response.content.contains("<tool_call>"))
+    }
+}
