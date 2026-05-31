@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.util.Locale
 import javax.inject.Inject
@@ -1086,6 +1087,17 @@ class SessionViewModel @Inject constructor(
         tts?.shutdown()
         speechRecognizer?.destroy()
         fallbackJob?.cancel()
+        backgroundSyncJob?.cancel()
+        viewModelScope.cancel()
         super.onCleared()
     }
+
+    internal fun cancelBackgroundSync() {
+        backgroundSyncJob?.cancel()
+    }
+
+    // Called from unit tests to release TTS, cancel all coroutines, and
+    // clear mocks after each test method. onCleared() is protected, so
+    // this internal shim is the clean way to invoke it from test code.
+    internal fun clearForTest() = onCleared()
 }
