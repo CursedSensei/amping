@@ -45,6 +45,7 @@ class SessionViewModel @Inject constructor(
     private var tts: TextToSpeech? = null
     private var speechRecognizer: SpeechRecognizer? = null
     private var fallbackJob: kotlinx.coroutines.Job? = null
+    private var backgroundSyncJob: kotlinx.coroutines.Job? = null
     private var hasLoggedVoices = false
 
     init {
@@ -945,7 +946,7 @@ class SessionViewModel @Inject constructor(
     }
 
     private fun startPeriodicBackgroundSync() {
-        viewModelScope.launch {
+        backgroundSyncJob = viewModelScope.launch {
             while (true) {
                 delay(15000)
                 if (isNetworkAvailable() && _uiState.value.isNetworkMode) {
