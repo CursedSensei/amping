@@ -39,6 +39,44 @@ The development is organized into four primary spiral cycles:
 3.  **Spiral 3:** Gamification Layer & Purpose-driven Mobile Frontend
 4.  **Spiral 4:** Dashboard Integration & End-to-End System
 
+## 🧪 Running Tests
+
+### Patient Mobile App (Android / Kotlin)
+
+All tests are JVM-based unit and integration tests — no emulator or device required.
+
+From the `frontend/patient/` directory:
+
+```bash
+# Run the full test suite
+./gradlew testDebugUnitTest
+
+# Run a specific test class
+./gradlew testDebugUnitTest --tests "com.pinghtdog.amping.crypto.VideoEncryptorTest"
+
+# Run all tests in a package
+./gradlew testDebugUnitTest --tests "com.pinghtdog.amping.data.repository.*"
+
+# Open the HTML report after a run (macOS/Linux)
+open app/build/reports/tests/testDebugUnitTest/index.html
+```
+
+In **Android Studio**: right-click any test file or the `src/test/` folder → **Run Tests**.
+
+**Test coverage by area:**
+
+| Area | File | What it tests |
+|---|---|---|
+| Crypto | `crypto/VideoEncryptorTest` | AES-CBC output length, random IV, PKCS5 padding |
+| Data layer | `data/repository/OfflineQueueManagerTest` | Queue CRUD, file deletion, JSON resilience |
+| Data layer | `data/repository/TokenManagerTest` | Token caching, disk persistence, `clearTokens` |
+| Repository | `data/repository/GabbyRepositoryMockChatFlowTest` | Crisis detection, 3-stage session flow, side-effect args |
+| ViewModel | `ui/session/SessionViewModelParseResponseTest` | LLM response parsing, tag stripping, fallback parser |
+| ViewModel | `ui/session/SessionViewModelTest` | Phase state machine, symptom selection, emergency override |
+| ViewModel | `ui/DashboardViewModelTest` | Network load, error handling, profile selection |
+
+---
+
 ## 👥 Team
 
 **Team Code:** 2526-sem2-cs342-08
