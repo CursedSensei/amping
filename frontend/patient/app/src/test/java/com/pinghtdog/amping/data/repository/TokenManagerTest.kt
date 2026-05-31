@@ -14,8 +14,8 @@ import java.nio.file.Files
  * Integration tests for [TokenManager].
  *
  * Uses a real temp directory via a mocked [Context] so file I/O is exercised
- * end-to-end. Calls [TokenManager.clearTokens] in [setUp] and [tearDown] to
- * flush the singleton's in-memory cache between tests.
+ * end-to-end. Calls [TokenManager.clearTokens] in setUp and tearDown to
+ * flush the singleton in-memory cache between tests.
  */
 class TokenManagerTest {
 
@@ -28,7 +28,6 @@ class TokenManagerTest {
         context = mockk {
             every { filesDir } returns tempDir
         }
-        // Reset singleton in-memory cache and disk state before every test
         TokenManager.clearTokens(context)
     }
 
@@ -38,7 +37,7 @@ class TokenManagerTest {
         tempDir.deleteRecursively()
     }
 
-    // ── Access token ───────────────────────────────────────────────────────────
+    // Access token
 
     @Test
     fun `getAccessToken returns null when nothing has been stored`() {
@@ -58,20 +57,25 @@ class TokenManagerTest {
     }
 
     @Test
+    fun `saveAccessToken with only whitespace is treated as empty and returns null`() {
+        // After trimming, "   " becomes "" which is stored as empty; getAccessToken
+        // reads the file and calls ifEmpty { null }, returning null.
+        TokenManager.clearTokens(context) // clear cache
+        File(tempDir, "access_token.txt").writeText("   ")
+        assertNull(TokenManager.getAccessToken(context))
+    }
+
+    @Test
     fun `getAccessToken returns cached value without re-reading disk`() {
         TokenManager.saveAccessToken(context, "cached_token")
-        // Delete the file; the in-memory cache should still serve the value
         File(tempDir, "access_token.txt").delete()
         assertEquals("cached_token", TokenManager.getAccessToken(context))
     }
 
     @Test
-    fun `getAccessToken reads from disk after cache is cleared`() {
-        // Write directly to disk, bypassing the cache
+    fun `getAccessToken reads from disk when cache has been cleared`() {
         File(tempDir, "access_token.txt").writeText("disk_token")
-        // clearTokens() resets the in-memory cache, forcing a disk read
         TokenManager.clearTokens(context)
-        // Re-mock context (clearTokens deleted the file, so write again)
         File(tempDir, "access_token.txt").writeText("disk_token")
         assertEquals("disk_token", TokenManager.getAccessToken(context))
     }
@@ -83,7 +87,14 @@ class TokenManagerTest {
         assertEquals("second_token", TokenManager.getAccessToken(context))
     }
 
-    // ── Refresh token ──────────────────────────────────────────────────────────
+    @Test
+    fun `saveAccessToken writes the token to disk`() {
+        TokenManager.saveAccessToken(context, "disk_check")
+        val onDisk = File(tempDir, "access_token.txt").readText().trim()
+        assertEquals("disk_check", onDisk)
+    }
+
+    // Refresh token
 
     @Test
     fun `saveRefreshToken persists and getRefreshToken returns it`() {
@@ -98,32 +109,41 @@ class TokenManagerTest {
     }
 
     @Test
-    fun `getRefreshToken seeds default token and writes it to disk when no file exists`() {
-        // Ensure file doesn't exist (clearTokens in setUp already handles this)
+    fun `getRefreshToken seeds default token to disk when no file exists`() {
         assertFalse(File(tempDir, "refresh_token.txt").exists())
-
         val token = TokenManager.getRefreshToken(context)
-
         assertNotNull(token)
-        // Default should also be persisted to disk
-        val diskToken = File(tempDir, "refresh_token.txt").readText().trim()
-        assertEquals(token, diskToken)
+        val onDisk = File(tempDir, "refresh_token.txt").readText().trim()
+        assertEquals(token, onDisk)
     }
 
     @Test
     fun `getRefreshToken returns stored token rather than default when file exists`() {
         TokenManager.saveRefreshToken(context, "custom_refresh_token")
-        val token = TokenManager.getRefreshToken(context)
-        assertEquals("custom_refresh_token", token)
+        assertEquals("custom_refresh_token", TokenManager.getRefreshToken(context))
     }
 
-    // ── clearTokens ────────────────────────────────────────────────────────────
+    @Test
+    fun `getRefreshToken called twice returns the same value`() {
+        TokenManager.saveRefreshToken(context, "stable_token")
+        assertEquals(TokenManager.getRefreshToken(context), TokenManager.getRefreshToken(context))
+    }
+
+    @Test
+    fun `getRefreshToken with empty file falls back to seeding default`() {
+        // An empty refresh_token.txt is treated as missing — the default is seeded.
+        File(tempDir, "refresh_token.txt").writeText("")
+        val token = TokenManager.getRefreshToken(context)
+        assertNotNull(token)
+        assertTrue(token!!.isNotBlank())
+    }
+
+    // clearTokens
 
     @Test
     fun `clearTokens removes access token from memory and disk`() {
         TokenManager.saveAccessToken(context, "access")
         TokenManager.clearTokens(context)
-
         assertNull(TokenManager.getAccessToken(context))
         assertFalse(File(tempDir, "access_token.txt").exists())
     }
@@ -132,15 +152,21 @@ class TokenManagerTest {
     fun `clearTokens removes refresh token file from disk`() {
         TokenManager.saveRefreshToken(context, "refresh")
         TokenManager.clearTokens(context)
-
         assertFalse(File(tempDir, "refresh_token.txt").exists())
     }
 
     @Test
-    fun `clearTokens is idempotent when no tokens are stored`() {
-        // Should not throw when called on a clean state
+    fun `clearTokens is idempotent when called on a clean state`() {
         TokenManager.clearTokens(context)
         TokenManager.clearTokens(context)
         assertNull(TokenManager.getAccessToken(context))
+    }
+
+    @Test
+    fun `clearTokens allows a fresh token to be stored afterward`() {
+        TokenManager.saveAccessToken(context, "old_token")
+        TokenManager.clearTokens(context)
+        TokenManager.saveAccessToken(context, "new_token")
+        assertEquals("new_token", TokenManager.getAccessToken(context))
     }
 }

@@ -26,7 +26,7 @@ class GabbyRepositoryMockChatFlowTest {
 
     private val repo = GabbyRepositoryImpl()
 
-    // ── Helpers ────────────────────────────────────────────────────────────────
+    // Helpers
 
     private fun userMsg(content: String) = Message(role = "user", content = content)
 
@@ -36,13 +36,13 @@ class GabbyRepositoryMockChatFlowTest {
         toolCall = toolName?.let { ToolCall(name = it) }
     )
 
-    // ── Crisis detection ───────────────────────────────────────────────────────
+    // Crisis detection
 
     @Test
     fun `kill myself triggers emergency_override for adult profile`() = runTest {
         val response = repo.getChatResponse(listOf(userMsg("I want to kill myself")), "adult")
         assertEquals("emergency_override", response.toolCall?.name)
-        assertTrue(response.content.contains("immense value") || response.content.isNotBlank())
+        assertTrue(response.content.isNotBlank())
     }
 
     @Test
@@ -71,12 +71,61 @@ class GabbyRepositoryMockChatFlowTest {
     }
 
     @Test
+    fun `wanna die triggers emergency_override`() = runTest {
+        val response = repo.getChatResponse(listOf(userMsg("I wanna die")), "adult")
+        assertEquals("emergency_override", response.toolCall?.name)
+    }
+
+    @Test
+    fun `hopeless triggers emergency_override`() = runTest {
+        val response = repo.getChatResponse(listOf(userMsg("I feel hopeless")), "adult")
+        assertEquals("emergency_override", response.toolCall?.name)
+    }
+
+    @Test
+    fun `give up triggers emergency_override`() = runTest {
+        val response = repo.getChatResponse(listOf(userMsg("I want to give up")), "adult")
+        assertEquals("emergency_override", response.toolCall?.name)
+    }
+
+    @Test
+    fun `cut myself triggers emergency_override`() = runTest {
+        val response = repo.getChatResponse(listOf(userMsg("I want to cut myself")), "adult")
+        assertEquals("emergency_override", response.toolCall?.name)
+    }
+
+    @Test
+    fun `end my life triggers emergency_override`() = runTest {
+        val response = repo.getChatResponse(listOf(userMsg("I want to end my life")), "adult")
+        assertEquals("emergency_override", response.toolCall?.name)
+    }
+
+    @Test
+    fun `crisis keyword detection is case-insensitive`() = runTest {
+        // Source lowercases the message before checking keywords
+        val response = repo.getChatResponse(listOf(userMsg("I Want To Kill Myself")), "adult")
+        assertEquals("emergency_override", response.toolCall?.name)
+    }
+
+    @Test
     fun `emergency_override arguments contain a reason`() = runTest {
         val response = repo.getChatResponse(listOf(userMsg("kill myself")), "adult")
         assertFalse(response.toolCall?.arguments?.get("reason").isNullOrBlank())
     }
 
-    // ── Stage 1: first message → show_symptom_checklist ───────────────────────
+    @Test
+    fun `emergency_override takes priority over checklist stage`() = runTest {
+        // Even if a checklist has been shown, crisis detection fires first
+        val messages = listOf(
+            userMsg("Hello"),
+            assistantMsg("Checklist", "show_symptom_checklist"),
+            userMsg("I want to kill myself")
+        )
+        val response = repo.getChatResponse(messages, "adult")
+        assertEquals("emergency_override", response.toolCall?.name)
+    }
+
+    // Stage 1: first message → show_symptom_checklist
 
     @Test
     fun `first user message returns show_symptom_checklist for adult`() = runTest {
@@ -102,13 +151,25 @@ class GabbyRepositoryMockChatFlowTest {
         assertTrue(response.content.lowercase().contains("dear"))
     }
 
-    // ── Stage 2: symptom submission → transition_to_vdot ──────────────────────
+    // Stage 2: symptom submission → transition_to_vdot
 
     @Test
     fun `after checklist shown symptom message returns transition_to_vdot`() = runTest {
         val messages = listOf(
             userMsg("Hello"),
             assistantMsg("Fill out checklist", "show_symptom_checklist"),
+            userMsg("No side effects today")
+        )
+        val response = repo.getChatResponse(messages, "adult")
+        assertEquals("transition_to_vdot", response.toolCall?.name)
+    }
+
+    @Test
+    fun `transition_to_symptoms is accepted as alternative checklist trigger for stage tracking`() = runTest {
+        // The source checks for either show_symptom_checklist or transition_to_symptoms
+        val messages = listOf(
+            userMsg("Hello"),
+            assistantMsg("Checklist", "transition_to_symptoms"),
             userMsg("No side effects today")
         )
         val response = repo.getChatResponse(messages, "adult")
@@ -138,6 +199,28 @@ class GabbyRepositoryMockChatFlowTest {
     }
 
     @Test
+    fun `dizzy keyword sets side_effects argument to dizziness`() = runTest {
+        val messages = listOf(
+            userMsg("Hello"),
+            assistantMsg("Checklist", "show_symptom_checklist"),
+            userMsg("Feeling dizzy today")
+        )
+        val response = repo.getChatResponse(messages, "adult")
+        assertEquals("dizziness", response.toolCall?.arguments?.get("side_effects"))
+    }
+
+    @Test
+    fun `no matching symptom keyword sets side_effects to none`() = runTest {
+        val messages = listOf(
+            userMsg("Hello"),
+            assistantMsg("Checklist", "show_symptom_checklist"),
+            userMsg("I feel completely fine")
+        )
+        val response = repo.getChatResponse(messages, "adult")
+        assertEquals("none", response.toolCall?.arguments?.get("side_effects"))
+    }
+
+    @Test
     fun `severe nausea sets nausea_severity to Severe`() = runTest {
         val messages = listOf(
             userMsg("Hello"),
@@ -149,7 +232,7 @@ class GabbyRepositoryMockChatFlowTest {
     }
 
     @Test
-    fun `mild nausea sets nausea_severity to Mild`() = runTest {
+    fun `mild keyword sets nausea_severity to Mild`() = runTest {
         val messages = listOf(
             userMsg("Hello"),
             assistantMsg("Checklist", "show_symptom_checklist"),
@@ -160,7 +243,7 @@ class GabbyRepositoryMockChatFlowTest {
     }
 
     @Test
-    fun `no symptom keywords sets nausea_severity to None`() = runTest {
+    fun `no severity keyword sets nausea_severity to None`() = runTest {
         val messages = listOf(
             userMsg("Hello"),
             assistantMsg("Checklist", "show_symptom_checklist"),
@@ -170,7 +253,7 @@ class GabbyRepositoryMockChatFlowTest {
         assertEquals("None", response.toolCall?.arguments?.get("nausea_severity"))
     }
 
-    // ── Stage 3: VDOT confirmation → trigger_vdot or standby ──────────────────
+    // Stage 3: VDOT confirmation → trigger_vdot or standby
 
     @Test
     fun `yes confirmation after vdot transition triggers trigger_vdot`() = runTest {
@@ -212,7 +295,7 @@ class GabbyRepositoryMockChatFlowTest {
     }
 
     @Test
-    fun `no reply returns no tool call (standby)`() = runTest {
+    fun `no reply returns standby without tool call`() = runTest {
         val messages = listOf(
             userMsg("Hello"),
             assistantMsg("Checklist", "show_symptom_checklist"),
@@ -263,7 +346,7 @@ class GabbyRepositoryMockChatFlowTest {
         assertEquals("15", response.toolCall?.arguments?.get("duration_seconds"))
     }
 
-    // ── Upload complete → transition_to_success ────────────────────────────────
+    // Upload complete → transition_to_success
 
     @Test
     fun `VDOT upload complete message returns transition_to_success`() = runTest {
@@ -272,8 +355,18 @@ class GabbyRepositoryMockChatFlowTest {
     }
 
     @Test
-    fun `vdot upload complete case-insensitive detection works`() = runTest {
-        val response = repo.getChatResponse(listOf(userMsg("vdot upload complete")), "youth")
+    fun `upload complete without VDOT prefix also triggers transition_to_success`() = runTest {
+        // Source checks contains("upload complete") as a second condition
+        val response = repo.getChatResponse(listOf(userMsg("upload complete")), "adult")
+        assertEquals("transition_to_success", response.toolCall?.name)
+    }
+
+    @Test
+    fun `upload complete with motivation text still triggers transition_to_success`() = runTest {
+        val response = repo.getChatResponse(
+            listOf(userMsg("VDOT upload complete. Motivation: Stay healthy")),
+            "adult"
+        )
         assertEquals("transition_to_success", response.toolCall?.name)
     }
 
@@ -283,7 +376,7 @@ class GabbyRepositoryMockChatFlowTest {
         assertTrue(response.content.isNotBlank())
     }
 
-    // ── parseResponse: tool call tags stripped from displayed content ──────────
+    // parseResponse: tags stripped from content
 
     @Test
     fun `response content never contains raw tool_call XML tags`() = runTest {

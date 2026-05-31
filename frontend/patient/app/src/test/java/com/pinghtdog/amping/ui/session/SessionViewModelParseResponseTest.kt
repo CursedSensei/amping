@@ -24,8 +24,8 @@ import java.nio.file.Files
  * [com.pinghtdog.amping.data.model.Message] model:
  *   - Valid tool call JSON is parsed into a [com.pinghtdog.amping.data.model.ToolCall]
  *   - Malformed JSON falls back to the regex parser and still extracts the name
- *   - <think> blocks are stripped from displayed content
- *   - <tool_call> tags are removed from displayed content
+ *   - think blocks are stripped from displayed content
+ *   - tool_call tags are removed from displayed content
  *   - Text without a tool call produces null toolCall
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -57,7 +57,7 @@ class SessionViewModelParseResponseTest {
         tempDir.deleteRecursively()
     }
 
-    // ── Valid tool call JSON ───────────────────────────────────────────────────
+    // Valid tool call JSON
 
     @Test
     fun `parseResponse extracts tool call name from valid JSON`() {
@@ -84,38 +84,70 @@ class SessionViewModelParseResponseTest {
     }
 
     @Test
-    fun `parseResponse role is assistant`() {
-        val message = viewModel.parseResponse("Some text")
-        assertEquals("assistant", message.role)
+    fun `parseResponse sets role to assistant`() {
+        assertEquals("assistant", viewModel.parseResponse("Some text").role)
     }
 
-    // ── No tool call ──────────────────────────────────────────────────────────
+    @Test
+    fun `parseResponse tool call with empty arguments map produces empty map not null`() {
+        val raw = """Text <tool_call>{"name": "transition_to_success", "arguments": {}}</tool_call>"""
+        val message = viewModel.parseResponse(raw)
+        assertEquals("transition_to_success", message.toolCall?.name)
+        assertNotNull(message.toolCall?.arguments)
+        assertTrue(message.toolCall!!.arguments.isEmpty())
+    }
+
+    @Test
+    fun `parseResponse tool call with no arguments key defaults to empty map`() {
+        val raw = """Text <tool_call>{"name": "show_symptom_checklist"}</tool_call>"""
+        val message = viewModel.parseResponse(raw)
+        assertNotNull(message.toolCall?.arguments)
+    }
+
+    // No tool call
 
     @Test
     fun `parseResponse plain text produces null toolCall`() {
-        val message = viewModel.parseResponse("Remaining on standby. Let me know when ready.")
-        assertNull(message.toolCall)
+        assertNull(viewModel.parseResponse("Remaining on standby.").toolCall)
     }
 
     @Test
-    fun `parseResponse plain text content is preserved`() {
+    fun `parseResponse plain text content is preserved exactly`() {
         val text = "Remaining on standby."
-        val message = viewModel.parseResponse(text)
-        assertEquals(text, message.content)
+        assertEquals(text, viewModel.parseResponse(text).content)
     }
 
-    // ── Malformed JSON fallback ────────────────────────────────────────────────
+    @Test
+    fun `parseResponse empty string produces null toolCall and empty content`() {
+        val message = viewModel.parseResponse("")
+        assertNull(message.toolCall)
+        assertEquals("", message.content)
+    }
 
     @Test
-    fun `parseResponse falls back to regex parser for malformed JSON and extracts name`() {
-        // LLMs sometimes emit single-quoted or slightly broken JSON
+    fun `parseResponse whitespace-only string returns null toolCall`() {
+        assertNull(viewModel.parseResponse("   \n   ").toolCall)
+    }
+
+    @Test
+    fun `parseResponse with only tool_call tags leaves content blank after stripping`() {
+        val raw = """<tool_call>{"name": "trigger_vdot"}</tool_call>"""
+        val message = viewModel.parseResponse(raw)
+        assertTrue(message.content.isBlank())
+        assertEquals("trigger_vdot", message.toolCall?.name)
+    }
+
+    // Malformed JSON fallback
+
+    @Test
+    fun `parseResponse falls back to regex parser for single-quoted JSON`() {
         val raw = """Text <tool_call>{'name': 'transition_to_vdot'}</tool_call>"""
         val message = viewModel.parseResponse(raw)
         assertEquals("transition_to_vdot", message.toolCall?.name)
     }
 
     @Test
-    fun `parseResponse regex fallback extracts named arguments`() {
+    fun `parseResponse regex fallback extracts named arguments from single-quoted JSON`() {
         val raw = """Text <tool_call>{'name': 'emergency_override', 'arguments': {'reason': 'crisis'}}</tool_call>"""
         val message = viewModel.parseResponse(raw)
         assertEquals("emergency_override", message.toolCall?.name)
@@ -123,26 +155,25 @@ class SessionViewModelParseResponseTest {
     }
 
     @Test
-    fun `parseResponse entirely broken JSON produces null toolCall without throwing`() {
+    fun `parseResponse completely unparseable tool call does not throw`() {
         val raw = """Text <tool_call>%%%%</tool_call>"""
-        // Should not throw; toolCall may be null if parsing completely fails
         val message = viewModel.parseResponse(raw)
-        assertNotNull(message) // at minimum returns a Message
+        assertNotNull(message)
     }
 
-    // ── <think> block stripping ────────────────────────────────────────────────
+    // think block stripping
 
     @Test
-    fun `parseResponse strips think blocks from displayed content`() {
-        val raw = "<think>This is internal reasoning</think>Visible response text."
+    fun `parseResponse strips think block from displayed content`() {
+        val raw = "<think>Internal reasoning</think>Visible response."
         val message = viewModel.parseResponse(raw)
         assertFalse(message.content.contains("<think>"))
-        assertFalse(message.content.contains("This is internal reasoning"))
-        assertTrue(message.content.contains("Visible response text."))
+        assertFalse(message.content.contains("Internal reasoning"))
+        assertTrue(message.content.contains("Visible response."))
     }
 
     @Test
-    fun `parseResponse with both think block and tool call strips both`() {
+    fun `parseResponse with think block and tool call strips both`() {
         val raw = "<think>reasoning</think>Hello! <tool_call>{\"name\": \"trigger_vdot\"}</tool_call>"
         val message = viewModel.parseResponse(raw)
         assertFalse(message.content.contains("<think>"))
@@ -152,7 +183,7 @@ class SessionViewModelParseResponseTest {
     }
 
     @Test
-    fun `parseResponse multiline think block is fully stripped`() {
+    fun `parseResponse strips multiline think block completely`() {
         val raw = """
             <think>
             Line one of thinking.
@@ -164,5 +195,13 @@ class SessionViewModelParseResponseTest {
         assertFalse(message.content.contains("Line one"))
         assertFalse(message.content.contains("Line two"))
         assertTrue(message.content.contains("This is the actual response."))
+    }
+
+    @Test
+    fun `parseResponse with only a think block leaves blank content`() {
+        val raw = "<think>All internal, nothing visible.</think>"
+        val message = viewModel.parseResponse(raw)
+        assertTrue(message.content.isBlank())
+        assertNull(message.toolCall)
     }
 }
