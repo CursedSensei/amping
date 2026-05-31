@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    id("kotlin-kapt")
+    alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
     alias(libs.plugins.kotlin.serialization)
 }
@@ -63,13 +63,6 @@ android {
     }
 }
 
-// Kotlin 2.x uses the K2 compiler for KAPT stub generation by default.
-// Hilt's annotation processor requires class hierarchy info that K2 stubs
-// omit, causing "Expected @AndroidEntryPoint to have a value."
-// correctErrorTypes enables a two-round compilation that resolves this.
-kapt {
-    correctErrorTypes = true
-}
 
 dependencies {
 
@@ -120,7 +113,20 @@ dependencies {
 
     // Dagger Hilt DI
     implementation(libs.hilt.android)
-    kapt(libs.hilt.compiler)
+    ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
 
-    // K
+    // Ktor Client
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.okhttp)
+    implementation(libs.ktor.client.websockets)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.serialization.kotlinx.json)
+
+    // CameraX
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.video)
+    implementation(libs.androidx.camera.view)
+}
