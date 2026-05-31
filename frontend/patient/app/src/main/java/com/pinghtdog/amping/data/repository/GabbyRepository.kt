@@ -28,6 +28,7 @@ import io.ktor.serialization.kotlinx.json.json
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -86,7 +87,7 @@ class GabbyRepositoryImpl @Inject constructor() : GabbyRepository {
             }
         }
         install(WebSockets) {
-            pingInterval = 20_000
+            pingInterval = 20.seconds
         }
         install(ContentNegotiation) {
             json(jsonParser)
